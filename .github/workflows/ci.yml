@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: Backend (lint+tests)
@@ -72,6 +76,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "npm"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -85,14 +90,9 @@ jobs:
             librsvg2-dev \
             patchelf
 
-      # ✅ REQUIRED because tauri.conf.json runs `npm --prefix ../frontend run build`
       - name: Install frontend deps
         working-directory: frontend
         run: npm ci
-
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
 
       - name: Install desktop deps
         working-directory: desktop
