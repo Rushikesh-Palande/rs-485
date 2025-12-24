@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import Callable
+from collections.abc import Callable
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -20,21 +20,28 @@ log = get_logger(__name__)
 class RequestContextMiddleware(BaseHTTPMiddleware):
     """
     Enterprise middleware:
-    ✅ Adds request_id/correlation_id to response headers
-    ✅ Binds request_id/correlation_id into contextvars
-       => all logs automatically contain them
+
+    ✅ Adds request_id/correlation_id to request.state and response headers
+    ✅ Binds IDs into structlog contextvars so *all logs include them*
     ✅ Logs request duration + status
-    ✅ Logs full exception with stacktrace and callsite
+    ✅ Ensures contextvars do not leak between requests (critical in async apps)
+
+    This is a "high signal" middleware:
+    - No noisy logs
+    - One completion log per request
+    - Full stacktrace for failures
     """
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: Callable[[Request], Response],
+    ) -> Response:
         request_id, correlation_id = RequestContext.extract_ids(dict(request.headers))
 
-        # Attach to request.state (useful for handlers)
         request.state.request_id = request_id
         request.state.correlation_id = correlation_id
 
-        # Bind into structlog contextvars (this is key for global log context)
         bind_request_context(request_id=request_id, correlation_id=correlation_id)
 
         t0 = time.perf_counter()
@@ -44,7 +51,6 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             return response
         except Exception:
-            # This logs with full stacktrace + filename/lineno/func_name automatically.
             log.exception(
                 "http_request_failed",
                 method=request.method,
@@ -63,10 +69,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 duration_ms=round(elapsed_ms, 2),
             )
 
-            # Ensure response headers exist if response was created
             if response is not None:
                 response.headers[HDR_REQUEST_ID] = request_id
                 response.headers[HDR_CORRELATION_ID] = correlation_id
 
-            # Critical: prevent async context leaking into next request
             clear_request_context()

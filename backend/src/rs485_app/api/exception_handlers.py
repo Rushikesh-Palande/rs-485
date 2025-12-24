@@ -11,11 +11,20 @@ log = get_logger(__name__)
 
 
 def _req_id(request: Request) -> str | None:
-    # middleware sets these on request.state
+    """
+    RequestContextMiddleware stores request_id on request.state.
+
+    Keep this defensive:
+    - if middleware fails early, request_id may not exist
+    - handlers should still work without crashing
+    """
     return getattr(request.state, "request_id", None)
 
 
-async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+async def http_exception_handler(
+    request: Request,
+    exc: StarletteHTTPException,
+) -> JSONResponse:
     """
     Standard HTTP errors (404, 401, etc.) with request_id in response.
     """
@@ -24,6 +33,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
         status_code=exc.status_code,
         detail=exc.detail,
         path=str(request.url.path),
+        request_id=_req_id(request),
     )
     return JSONResponse(
         status_code=exc.status_code,
@@ -34,7 +44,10 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
     )
 
 
-async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def validation_exception_handler(
+    request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
     """
     Request validation errors (422) with request_id in response.
     """
@@ -42,6 +55,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         "request_validation_failed",
         errors=exc.errors(),
         path=str(request.url.path),
+        request_id=_req_id(request),
     )
     return JSONResponse(
         status_code=422,
@@ -55,12 +69,13 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """
     Any unexpected exception:
-    - logs stacktrace with exact file/line
+    - logs stacktrace with exact file/line (structlog processor)
     - returns request_id so frontend can report it
     """
     log.exception(
         "unhandled_exception",
         path=str(request.url.path),
+        request_id=_req_id(request),
     )
     return JSONResponse(
         status_code=500,

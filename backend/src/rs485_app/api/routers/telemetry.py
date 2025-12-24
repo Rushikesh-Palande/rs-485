@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Query, Request
@@ -17,13 +16,16 @@ router = APIRouter(prefix="/api/telemetry", tags=["telemetry"])
 def get_history(
     request: Request,
     device_uid: str,
-    start: Optional[datetime] = Query(default=None),
-    end: Optional[datetime] = Query(default=None),
+    start: datetime | None = Query(default=None),
+    end: datetime | None = Query(default=None),
     limit: int = Query(default=2000, ge=1, le=20000),
 ):
     """
     History endpoint for charts.
-    Uses indexed query (device_id, ts).
+
+    Query is optimized by:
+    - JOIN devices -> telemetry_samples
+    - composite index (device_id, ts)
     """
     runtime = request.app.state.runtime
     engine: sa.Engine = runtime.engine  # type: ignore[attr-defined]

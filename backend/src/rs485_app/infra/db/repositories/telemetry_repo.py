@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import sqlalchemy as sa
@@ -13,19 +13,27 @@ log = get_logger(__name__)
 
 def _utc_naive_from_iso(ts_iso: str) -> datetime:
     """
-    Simulator sends ISO with timezone. MySQL DATETIME has no tz.
-    Store UTC naive for consistency.
+    Convert ISO timestamp to naive UTC datetime.
+
+    Why:
+    - MySQL DATETIME has no timezone
+    - We store all timestamps as UTC-naive consistently
     """
     dt = datetime.fromisoformat(ts_iso.replace("Z", "+00:00"))
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC).replace(tzinfo=None)
 
 
 class TelemetryRepository:
     """
     High-throughput inserts (executemany).
+
+    Important:
+    - this class is intentionally "thin": it does not manage transactions
+    - caller decides transaction boundary (we use engine.begin() in the writer)
     """
+
     def insert_batch(
         self,
         conn: sa.Connection,
@@ -88,13 +96,9 @@ class TelemetryRepository:
             q = q.where(TelemetrySample.ts <= end)
 
         rows = conn.execute(q).all()
-        # Reverse to ascending time for chart rendering
-        out = [
-            {
-                "ts": r.ts.isoformat(),
-                "metrics": r.metrics_json,
-                "quality": r.quality_json,
-            }
+
+        # Return ascending time for charting
+        return [
+            {"ts": r.ts.isoformat(), "metrics": r.metrics_json, "quality": r.quality_json}
             for r in reversed(rows)
         ]
-        return out
