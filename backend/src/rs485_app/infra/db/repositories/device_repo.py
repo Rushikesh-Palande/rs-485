@@ -102,7 +102,7 @@ class DeviceRepository:
         if metadata is not None:
             update_map["metadata_json"] = sa.func.coalesce(
                 stmt.inserted.metadata_json,  # new value
-                Device.metadata_json,         # fallback to existing
+                Device.metadata_json,  # fallback to existing
             )
 
         stmt = stmt.on_duplicate_key_update(**update_map)
