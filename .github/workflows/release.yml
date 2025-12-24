@@ -9,6 +9,10 @@ permissions:
   contents: write
   packages: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   docker:
     name: Publish Docker (GHCR)
@@ -16,16 +20,20 @@ jobs:
     defaults:
       run:
         working-directory: backend
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set image name (lowercase owner)
+      - name: Compute image name (GHCR requires lowercase)
         id: meta
         shell: bash
         run: |
           OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
           echo "IMAGE=ghcr.io/${OWNER}/rs485-backend" >> "$GITHUB_OUTPUT"
           echo "TAG=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login GHCR
         uses: docker/login-action@v3
@@ -34,14 +42,19 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & Push
+      # NOTE:
+      # -f ../Dockerfile and build context .. expects Dockerfile at repo root.
+      # This matches your current layout.
+      - name: Build & Push (GHCR)
         shell: bash
         run: |
-          docker build \
+          docker buildx build \
+            --pull \
+            --push \
             -t "${{ steps.meta.outputs.IMAGE }}:${{ steps.meta.outputs.TAG }}" \
+            -t "${{ steps.meta.outputs.IMAGE }}:latest" \
             -f ../Dockerfile \
             ..
-          docker push "${{ steps.meta.outputs.IMAGE }}:${{ steps.meta.outputs.TAG }}"
 
   tauri:
     name: Build Tauri installers
@@ -63,7 +76,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # ✅ Linux deps needed for the build
+      # Linux dependencies for Tauri v2 on Ubuntu runners
       - name: Install Linux deps (Tauri)
         if: runner.os == 'Linux'
         run: |
@@ -74,6 +87,8 @@ jobs:
             librsvg2-dev \
             patchelf
 
+      # IMPORTANT:
+      # npm ci requires package-lock.json to be in sync.
       - name: Install frontend deps
         working-directory: frontend
         run: npm ci
@@ -86,7 +101,7 @@ jobs:
         working-directory: desktop
         run: npm ci
 
-      # ✅ This uploads artifacts to the GitHub Release for the tag
+      # Builds installers and attaches them to the GitHub Release for the tag
       - name: Build & Publish Tauri Release
         uses: tauri-apps/tauri-action@v0
         env:
