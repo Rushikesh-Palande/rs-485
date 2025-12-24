@@ -65,9 +65,6 @@ jobs:
   desktop:
     name: Desktop (tauri build smoke)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: desktop
     steps:
       - uses: actions/checkout@v4
 
@@ -75,8 +72,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-          cache-dependency-path: desktop/package-lock.json
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -90,8 +85,19 @@ jobs:
             librsvg2-dev \
             patchelf
 
+      # ✅ REQUIRED because tauri.conf.json runs `npm --prefix ../frontend run build`
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
       - name: Install desktop deps
+        working-directory: desktop
         run: npm ci
 
       - name: Build desktop (linux)
+        working-directory: desktop
         run: npm run build
