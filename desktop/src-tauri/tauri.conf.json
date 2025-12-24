@@ -5,9 +5,9 @@
   "identifier": "com.rs485.enterprise",
 
   "build": {
-    "beforeDevCommand": "pnpm --dir ../frontend dev",
+    "beforeDevCommand": "npm --prefix ../frontend run dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "pnpm --dir ../frontend build",
+    "beforeBuildCommand": "npm --prefix ../frontend run build",
     "frontendDist": "../frontend/dist"
   },
 
