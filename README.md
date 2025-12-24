@@ -1,0 +1,217 @@
+# RS-485 Enterprise Telemetry (Web + Desktop)
+
+This repository is an **enterprise-grade** RS-485 telemetry platform:
+
+- **Backend (FastAPI)**: realtime WS streaming + REST history + analytics-ready storage
+- **DB (MySQL + Alembic)**: future-proof schema that can store **any** RS-485 parameters
+- **Frontend (Vite + React + Tailwind)**: high-performance dashboard
+- **Desktop (Tauri v2)**: native app wrapper with tray/menu, autostart, backend watchdog, and recording export
+
+> **Performance design goals**
+> - WebGL charts (high FPS)
+> - Client-side downsampling (LTTB) to keep rendering fast even at high sample rates
+> - Virtualized parameter table (50k+ keys)
+> - Record / Replay + Export as `.jsonl` for debugging
+
+---
+
+## 0) Repo hygiene before pushing to GitHub (IMPORTANT)
+
+Your uploaded ZIP contained local artifacts (example: `.venv`, `node_modules`, `.git`).
+Before you push to GitHub:
+
+1. Delete local folders if they exist:
+   - `backend/.venv/`
+   - `frontend/node_modules/`
+   - `desktop/node_modules/`
+2. Ensure `.env` is NOT committed.
+3. Commit only source code + config files.
+
+A hardened `.gitignore` is included.
+
+---
+
+## 1) Prerequisites
+
+### Backend
+- Python **3.11+**
+- `uv` package manager (recommended)
+
+### Database
+- MySQL 8.x running locally
+- A database created, e.g. `rs485`
+
+### Frontend / Desktop
+- Node.js **20+**
+- (Desktop) Rust toolchain
+
+---
+
+## 2) Quick start (Backend)
+
+```bash
+cd backend
+uv sync --dev
+uv run uvicorn rs485_app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Health check:
+
+- `GET http://127.0.0.1:8000/api/health`
+
+WebSocket:
+
+- `ws://127.0.0.1:8000/ws/realtime`
+
+---
+
+## 3) MySQL + Migrations
+
+### Option A (recommended): create a dedicated DB user
+
+Create DB + user:
+
+```sql
+CREATE DATABASE IF NOT EXISTS rs485 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE USER IF NOT EXISTS 'rs485'@'localhost' IDENTIFIED BY 'rs485';
+GRANT ALL PRIVILEGES ON rs485.* TO 'rs485'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+Set `backend/.env`:
+
+```env
+DATABASE_URL=mysql+pymysql://rs485:rs485@127.0.0.1:3306/rs485
+```
+
+Run migrations:
+
+```bash
+cd backend
+uv run alembic -c alembic.ini upgrade head
+```
+
+### Option B: use your local MySQL root (root/root)
+
+Yes you can, but **don’t use root in production**.
+
+```env
+DATABASE_URL=mysql+pymysql://root:root@127.0.0.1:3306/rs485
+```
+
+If you get an auth plugin error (`caching_sha2_password`), install `cryptography`:
+
+```bash
+cd backend
+uv add cryptography
+```
+
+---
+
+## 4) Quick start (Frontend Web)
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Open:
+
+- `http://localhost:5173`
+
+The UI connects to backend at `http://127.0.0.1:8000` by default.
+
+Override via `frontend/.env`:
+
+```env
+VITE_API_BASE=http://127.0.0.1:8000
+```
+
+---
+
+## 5) Quick start (Desktop Tauri)
+
+### Development
+Run backend separately, then:
+
+```bash
+cd desktop
+npm ci
+npm run dev
+```
+
+### Production build (bundled backend sidecar)
+For production builds, Tauri expects a bundled backend executable:
+
+- `desktop/src-tauri/bin/rs485-backend`
+
+You build it from Python using PyInstaller and copy it there (Windows example):
+
+```bash
+cd backend
+uv run pyinstaller -F -n rs485-backend -p src -m uvicorn rs485_app.main:app -- --host 127.0.0.1 --port 8000
+# output: dist/rs485-backend.exe
+```
+
+Then copy to:
+
+- `desktop/src-tauri/bin/rs485-backend.exe` (Windows)
+- `desktop/src-tauri/bin/rs485-backend` (Linux/macOS)
+
+Now build desktop:
+
+```bash
+cd desktop
+npm run build
+```
+
+---
+
+## 6) Dashboard features
+
+### WebGL charts
+The dashboard uses **ECharts GL** for WebGL-accelerated series rendering.
+
+### Downsampling (biggest win)
+For each series, the UI runs **LTTB** downsampling to ~2000 points before rendering.
+This keeps the chart smooth even if the backend publishes very fast telemetry.
+
+### Virtualized table (50k params)
+The parameter panel uses virtualization to keep DOM size stable.
+
+### Multi-metric overlay
+Select up to 6 numeric keys to overlay.
+
+### Record / Replay + Export JSONL
+- Record writes WS events into IndexedDB
+- Replay streams from IndexedDB without backend
+- Export saves to `.jsonl` (browser download or native save dialog in Tauri)
+
+---
+
+## 7) CI/CD (GitHub Actions)
+
+Included workflows:
+
+- `CI`: backend lint/test + frontend build + tauri build smoke
+- `Release`: builds desktop apps on tag push (`vX.Y.Z`)
+
+---
+
+## 8) Troubleshooting
+
+### WS connects but no data
+Ensure backend is in `SERIAL_MODE=simulator` or your serial pipeline is producing events.
+
+### Desktop closes instead of minimizing
+This repo is configured to **hide window on close** and keep tray icon alive.
+
+### Backend crashes in desktop
+A watchdog checks port `127.0.0.1:8000` and restarts the sidecar if it dies.
+
+---
+
+## License
+Choose your license (MIT/Apache-2.0/etc.) and add `LICENSE`.

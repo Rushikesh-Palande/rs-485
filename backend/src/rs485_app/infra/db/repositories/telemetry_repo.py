@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
+
+import sqlalchemy as sa
+
+from rs485_app.infra.db.models import Device, TelemetrySample
+from rs485_app.logging_config import get_logger
+
+log = get_logger(__name__)
+
+
+def _utc_naive_from_iso(ts_iso: str) -> datetime:
+    """
+    Simulator sends ISO with timezone. MySQL DATETIME has no tz.
+    Store UTC naive for consistency.
+    """
+    dt = datetime.fromisoformat(ts_iso.replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+class TelemetryRepository:
+    """
+    High-throughput inserts (executemany).
+    """
+    def insert_batch(
+        self,
+        conn: sa.Connection,
+        *,
+        device_id: int,
+        events: list[dict[str, Any]],
+        source: str,
+    ) -> int:
+        if not events:
+            return 0
+
+        rows: list[dict[str, Any]] = []
+        for e in events:
+            quality = e.get("quality") or {}
+            rows.append(
+                {
+                    "device_id": device_id,
+                    "ts": _utc_naive_from_iso(e["ts"]),
+                    "metrics_json": e.get("metrics") or {},
+                    "quality_json": quality or None,
+                    "crc_ok": quality.get("crc_ok"),
+                    "frame_seq": quality.get("frame_seq"),
+                    "raw_frame": e.get("raw_frame"),
+                    "source": source,
+                }
+            )
+
+        conn.execute(sa.insert(TelemetrySample), rows)
+        return len(rows)
+
+    def fetch_history(
+        self,
+        conn: sa.Connection,
+        *,
+        device_uid: str,
+        start: datetime | None,
+        end: datetime | None,
+        limit: int = 2000,
+    ) -> list[dict[str, Any]]:
+        """
+        Query for charting: returns [{ts, metrics, quality}, ...]
+        Uses (device_id, ts) index for speed.
+        """
+        q = (
+            sa.select(
+                TelemetrySample.ts,
+                TelemetrySample.metrics_json,
+                TelemetrySample.quality_json,
+            )
+            .select_from(TelemetrySample)
+            .join(Device, Device.id == TelemetrySample.device_id)
+            .where(Device.device_uid == device_uid)
+            .order_by(TelemetrySample.ts.desc())
+            .limit(limit)
+        )
+
+        if start is not None:
+            q = q.where(TelemetrySample.ts >= start)
+        if end is not None:
+            q = q.where(TelemetrySample.ts <= end)
+
+        rows = conn.execute(q).all()
+        # Reverse to ascending time for chart rendering
+        out = [
+            {
+                "ts": r.ts.isoformat(),
+                "metrics": r.metrics_json,
+                "quality": r.quality_json,
+            }
+            for r in reversed(rows)
+        ]
+        return out

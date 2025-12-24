@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "RS-485 Command Center",
+  "version": "0.1.0",
+  "identifier": "com.rs485.enterprise",
+
+  "build": {
+    "beforeDevCommand": "pnpm --dir ../frontend dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "pnpm --dir ../frontend build",
+    "frontendDist": "../frontend/dist"
+  },
+
+  "app": {
+    "windows": [
+      {
+        "title": "RS-485 Command Center",
+        "width": 1400,
+        "height": 900,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "externalBin": ["bin/rs485-backend"]
+  }
+}

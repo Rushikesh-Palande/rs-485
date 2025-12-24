@@ -1,0 +1,13 @@
+{
+  "identifier": "default",
+  "description": "Default capability set for RS-485 Command Center",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-spawn",
+    "shell:allow-kill",
+    "shell:allow-open",
+    "dialog:default",
+    "fs:default"
+  ]
+}

@@ -1,0 +1,22 @@
+name-template: "RS-485 Command Center $NEXT_PATCH_VERSION"
+tag-template: "v$NEXT_PATCH_VERSION"
+
+categories:
+  - title: "🚀 Features"
+    labels: ["feature", "feat"]
+  - title: "🐛 Fixes"
+    labels: ["fix", "bug"]
+  - title: "🧰 Maintenance"
+    labels: ["chore", "refactor", "ci", "docs"]
+
+change-template: "- $TITLE (#$NUMBER) — @$AUTHOR"
+template: |
+  ## What’s Changed
+  $CHANGES
+
+  ## Installers
+  - Windows / macOS / Linux installers are attached to this release.
+  - Docker image published to GHCR.
+
+  ## Notes
+  - See README for full setup steps.
