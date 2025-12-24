@@ -81,7 +81,6 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # ✅ Critical for Tauri builds on Ubuntu runners
       - name: Install Linux deps (Tauri)
         run: |
           sudo apt-get update
@@ -94,6 +93,5 @@ jobs:
       - name: Install desktop deps
         run: npm ci
 
-      # ✅ Use your normal build script (NOT npm run tauri build)
       - name: Build desktop (linux)
         run: npm run build
