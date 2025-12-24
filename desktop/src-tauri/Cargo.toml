@@ -5,8 +5,13 @@ description = "RS-485 Command Center Desktop"
 authors = ["you"]
 edition = "2021"
 
+# ✅ REQUIRED by Tauri v2 tooling (fixes: "package.metadata does not exist")
+[package.metadata.tauri]
+# optional but recommended
+windows = [{ webviewInstallMode = { type = "downloadBootstrapper" } }]
+
 [build-dependencies]
-tauri-build = "2"
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
