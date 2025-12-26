@@ -337,16 +337,7 @@ function Sidebar() {
           />
         </div>
 
-        <div className={cn("mt-4 flex flex-col gap-3", sidebarOpen ? "items-stretch" : "items-center")}>
-          <button
-            type="button"
-            className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/5 text-slate-200 hover:bg-white/10"
-            title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-            onClick={() => dispatch(toggleSidebar())}
-          >
-            {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
-          </button>
-        </div>
+        <div className={cn("mt-4 flex flex-col gap-3", sidebarOpen ? "items-stretch" : "items-center")} />
       </div>
     </aside>
   );
