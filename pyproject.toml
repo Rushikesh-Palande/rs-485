@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "rs485-enterprise-app"
 version = "0.1.0"
@@ -7,7 +11,9 @@ readme = "README.md"
 license = { text = "Proprietary" }
 authors = [{ name = "RS485 Team" }]
 
-dependencies = []
+dependencies = [
+  "pyserial>=3.5",
+]
 
 [tool.uv]
 dev-dependencies = []
@@ -28,6 +34,10 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # FastAPI idiom: Query(...) in signature is valid; Ruff's B008 doesn't apply well here.
 "backend/src/rs485_app/api/routers/*.py" = ["B008"]
+
+[tool.setuptools.packages.find]
+where = ["backend/src"]
+include = ["rs485_app*"]
 
 [tool.black]
 line-length = 100
