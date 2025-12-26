@@ -46,3 +46,4 @@ desktop/src-tauri/target/
 # --- Local DB / data ---
 *.sqlite3
 data/
+AGENTS.md
