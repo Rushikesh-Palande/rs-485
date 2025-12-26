@@ -40,7 +40,7 @@ def create_engine_from_settings(settings: Settings) -> sa.Engine:
     return create_engine(
         settings.database_url,
         pool_pre_ping=True,
-        pool_recycle=1800,   # 30 minutes
+        pool_recycle=1800,  # 30 minutes
         pool_size=10,
         max_overflow=20,
         future=True,

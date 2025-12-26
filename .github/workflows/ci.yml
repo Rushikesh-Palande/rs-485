@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: Backend (lint+tests)
@@ -22,20 +26,24 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
 
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+
       - name: Lint (ruff)
         run: ruff check .
+
       - name: Format check (black)
         run: black --check .
+
       - name: Tests
         run: pytest -q
 
   frontend:
-    name: Frontend (build)
+    name: Frontend (typecheck+build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -55,14 +63,12 @@ jobs:
 
       - name: Typecheck + Build
         run: |
+          npm run typecheck --if-present
           npm run build
 
   desktop:
     name: Desktop (tauri build smoke)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: desktop
     steps:
       - uses: actions/checkout@v4
 
@@ -71,11 +77,30 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            desktop/package-lock.json
 
-      - name: Install
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux deps (Tauri)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install frontend deps
+        working-directory: frontend
         run: npm ci
 
-      # Smoke build only on CI (Linux only)
+      - name: Install desktop deps
+        working-directory: desktop
+        run: npm ci
+
       - name: Build desktop (linux)
-        run: npm run tauri build
+        working-directory: desktop
+        run: npm run build

@@ -17,7 +17,9 @@ DEFAULT_LOG_LEVEL: Final[str] = "INFO"
 
 
 def _orjson_dumps(obj: Any) -> str:
-    # orjson returns bytes; renderers expect str
+    """
+    orjson returns bytes but structlog renderers expect str.
+    """
     return orjson.dumps(obj, option=orjson.OPT_NON_STR_KEYS).decode("utf-8")
 
 
@@ -31,7 +33,7 @@ def configure_logging(
     **_ignored: Any,  # backward/forward compatibility (won't crash on extra kwargs)
 ) -> None:
     """
-    Enterprise logging, tuned for *debuggability*.
+    Enterprise logging system tuned for *debuggability*.
 
     Modes
     -----
@@ -45,13 +47,18 @@ def configure_logging(
     ✅ request_id/correlation_id/ws context automatically injected (contextvars)
     ✅ uvicorn/fastapi logs normalized into the same format
     ✅ NO duplicate "log inside log" lines (clean single-line output)
+
+    Notes
+    -----
+    - structlog + stdlib are unified by `structlog.stdlib.ProcessorFormatter`.
+    - structlog emits event dicts; stdlib formatter renders once.
     """
 
     level_name = (log_level or os.getenv("LOG_LEVEL") or DEFAULT_LOG_LEVEL).upper()
     app_env_val = app_env or os.getenv("APP_ENV") or "dev"
     dev_mode = _is_dev(app_env_val)
 
-    # Callsite info => filename, lineno, func_name, module, pathname
+    # Adds file/line/function/module/path for ultra-fast debugging.
     callsite = structlog.processors.CallsiteParameterAdder(
         parameters=[
             structlog.processors.CallsiteParameter.FILENAME,
@@ -62,29 +69,26 @@ def configure_logging(
         ]
     )
 
-    # Everything below is designed so that:
-    # - structlog loggers + stdlib loggers share the exact same formatter
-    # - stdlib logs (uvicorn, etc.) become structured too
+    # This chain runs BEFORE rendering for both structlog and stdlib logs.
+    # IMPORTANT: add_logger_name/add_log_level are from structlog.stdlib for compatibility.
     shared_pre_chain = [
-        merge_contextvars,  # inject request_id/correlation_id/ws_client_id, etc.
+        merge_contextvars,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
-        structlog.processors.add_log_level,
-        structlog.processors.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
         callsite,
     ]
 
-    # DEV renderer: pretty & colored
-    # PROD renderer: JSON via orjson (fast)
     renderer = (
         structlog.dev.ConsoleRenderer(colors=True)
         if dev_mode
         else structlog.processors.JSONRenderer(serializer=_orjson_dumps)
     )
 
-    # Processor chain for stdlib logs. This runs *inside* ProcessorFormatter.
+    # This runs inside ProcessorFormatter just before final render.
     formatter_processors = [
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,  # full exception trace w/ file+line
+        structlog.processors.format_exc_info,  # renders full stack trace with callsite info
         structlog.processors.UnicodeDecoder(),
         renderer,
     ]
@@ -120,9 +124,9 @@ def configure_logging(
 
     logging.config.dictConfig(logging_config)
 
-    # IMPORTANT:
-    # - For structlog itself, we do NOT render here.
-    # - We wrap for ProcessorFormatter so the stdlib formatter renders *once*.
+    # structlog config:
+    # - emit event dicts
+    # - stdlib ProcessorFormatter does the rendering exactly once
     structlog.configure(
         processors=[
             *shared_pre_chain,
@@ -151,7 +155,11 @@ def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
 
 
 def bind_request_context(request_id: str, correlation_id: str) -> None:
-    """After this, every log line automatically includes request_id + correlation_id."""
+    """
+    After this, every log line automatically includes:
+    - request_id
+    - correlation_id
+    """
     bind_contextvars(request_id=request_id, correlation_id=correlation_id)
 
 
@@ -162,7 +170,9 @@ def bind_ws_context(
     ws_path: str,
     device_id: str | None = None,
 ) -> None:
-    """WebSocket context so every WS log line includes stable identifiers."""
+    """
+    WebSocket context so every WS log line includes stable identifiers.
+    """
     bind_contextvars(
         ws_request_id=ws_request_id,
         ws_client_id=ws_client_id,
@@ -172,7 +182,9 @@ def bind_ws_context(
 
 
 def clear_request_context() -> None:
-    """Critical under async: prevent context leaking into the next request/connection."""
+    """
+    Critical under async: prevent context leaking into the next request/connection.
+    """
     clear_contextvars()
 
 

@@ -4,10 +4,11 @@ Revision ID: 0001_init_mysql
 Revises: None
 Create Date: 2025-12-23
 """
+
 from __future__ import annotations
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import mysql
 
 revision = "0001_init_mysql"
@@ -17,6 +18,9 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # -----------------------------------------------------------------------
+    # devices: stable identity for hardware boards/gateways
+    # -----------------------------------------------------------------------
     op.create_table(
         "devices",
         sa.Column("id", sa.BigInteger(), primary_key=True),
@@ -41,10 +45,19 @@ def upgrade() -> None:
     )
     op.create_index("ix_devices_device_uid", "devices", ["device_uid"])
 
+    # -----------------------------------------------------------------------
+    # telemetry_samples: append-only time series. "metrics_json" is schema-less.
+    # device_id is a FK to devices.id (fast joins + referential integrity)
+    # -----------------------------------------------------------------------
     op.create_table(
         "telemetry_samples",
         sa.Column("id", sa.BigInteger(), primary_key=True),
-        sa.Column("device_id", sa.BigInteger(), sa.ForeignKey("devices.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "device_id",
+            sa.BigInteger(),
+            sa.ForeignKey("devices.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("ts", mysql.DATETIME(fsp=6), nullable=False),
         sa.Column("metrics_json", mysql.JSON(), nullable=False),
         sa.Column("quality_json", mysql.JSON(), nullable=True),
@@ -59,6 +72,11 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
+
+    # Indexes:
+    # - device_id: for device-scoped queries
+    # - ts: for global time filtering
+    # - (device_id, ts): critical for charts (fast range scan per device)
     op.create_index("ix_telemetry_samples_device_id", "telemetry_samples", ["device_id"])
     op.create_index("ix_telemetry_samples_ts", "telemetry_samples", ["ts"])
     op.create_index("ix_telemetry_device_ts", "telemetry_samples", ["device_id", "ts"])

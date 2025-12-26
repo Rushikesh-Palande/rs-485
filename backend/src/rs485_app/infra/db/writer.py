@@ -17,16 +17,16 @@ class TelemetryDbWriter:
     """
     High-throughput DB writer.
 
-    Design:
-    - async ingestion pushes events into an asyncio.Queue (non-blocking)
-    - a single consumer drains queue and flushes to MySQL in batches
-    - DB writes run in a thread to avoid blocking the event loop (sync driver)
+    Pattern:
+    - Producers: ingestion pipeline calls submit(event)
+    - Consumer: one task drains queue and writes in batches
 
-    This pattern is used in production telemetry systems when you need:
-    - low websocket latency
-    - high write throughput
-    - predictable memory usage (bounded queue)
+    Why this is fast:
+    - DB writes are batched (executemany)
+    - writes happen in a thread (sync SQLAlchemy driver won't block event loop)
+    - queue is bounded => backpressure is controlled
     """
+
     def __init__(
         self,
         *,
@@ -41,6 +41,7 @@ class TelemetryDbWriter:
         self.batch_size = batch_size
         self.flush_ms = flush_ms
         self.queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=queue_maxsize)
+
         self._task: asyncio.Task | None = None
         self._running = False
 
@@ -76,8 +77,8 @@ class TelemetryDbWriter:
 
     async def submit(self, event: dict[str, Any]) -> None:
         """
-        Non-blocking backpressure:
-        - if queue is full, we drop with a log (never block the realtime pipeline)
+        Best-effort persistence:
+        - if queue is full, we drop events instead of blocking realtime.
         """
         try:
             self.queue.put_nowait(event)
@@ -85,9 +86,6 @@ class TelemetryDbWriter:
             log.warning("db_queue_full_dropping_event", device_id=event.get("device_id"))
 
     async def _run(self) -> None:
-        """
-        Drain queue and flush in batches (size or time).
-        """
         batch: list[dict[str, Any]] = []
         last_flush = time.monotonic()
 
@@ -97,22 +95,28 @@ class TelemetryDbWriter:
             try:
                 event = await asyncio.wait_for(self.queue.get(), timeout=timeout)
                 batch.append(event)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # time-based flush
                 pass
 
             if not batch:
                 continue
 
-            if len(batch) >= self.batch_size or (time.monotonic() - last_flush) * 1000 >= self.flush_ms:
-                to_flush = batch
-                batch = []
-                last_flush = time.monotonic()
-                await self._flush(to_flush)
+            should_flush = (
+                len(batch) >= self.batch_size
+                or (time.monotonic() - last_flush) * 1000 >= self.flush_ms
+            )
+            if not should_flush:
+                continue
+
+            to_flush = batch
+            batch = []
+            last_flush = time.monotonic()
+            await self._flush(to_flush)
 
     async def _flush(self, batch: list[dict[str, Any]]) -> None:
         """
-        Perform DB writes in a thread (sync driver).
+        DB writes are sync; run in a thread so event loop stays responsive.
         """
         started = time.perf_counter()
         try:
@@ -124,18 +128,20 @@ class TelemetryDbWriter:
                 batch_size=len(batch),
                 elapsed_ms=elapsed_ms,
                 queue_size=self.queue.qsize(),
-
             )
         except Exception:
-            log.exception("telemetry_batch_write_failed", batch_size=len(batch), queue_size=self.queue.qsize())
+            log.exception(
+                "telemetry_batch_write_failed",
+                batch_size=len(batch),
+                queue_size=self.queue.qsize(),
+            )
 
     def _flush_sync(self, batch: list[dict[str, Any]]) -> int:
         """
         Sync write path:
-        - groups by device_uid (device_id resolution + insert)
-        - uses single connection for the flush (faster)
+        - group by device_uid (so each device gets resolved once)
+        - do everything in a single transaction per flush
         """
-        # Group events by device_uid (your simulator uses device_id as string uid)
         groups: dict[str, list[dict[str, Any]]] = {}
         for e in batch:
             device_uid = str(e.get("device_uid") or e.get("device_id") or "unknown")
@@ -155,4 +161,5 @@ class TelemetryDbWriter:
                     events=events,
                     source=self.source,
                 )
+
         return total

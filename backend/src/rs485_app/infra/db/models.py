@@ -17,6 +17,7 @@ class Device(Base):
     - device_uid is stable across reboots (like board-01)
     - metadata_json stores arbitrary device metadata (future-proof)
     """
+
     __tablename__ = "devices"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -28,7 +29,6 @@ class Device(Base):
 
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
-    # ✅ MySQL dialect DATETIME supports fsp
     created_at: Mapped[datetime] = mapped_column(
         DATETIME(fsp=6),
         server_default=func.now(),
@@ -41,7 +41,7 @@ class Device(Base):
         nullable=False,
     )
 
-    telemetry: Mapped[list["TelemetrySample"]] = relationship(
+    telemetry: Mapped[list[TelemetrySample]] = relationship(
         back_populates="device",
         cascade="all, delete-orphan",
     )
@@ -54,6 +54,7 @@ class TelemetrySample(Base):
     - quality_json stores crc_ok, seq, parse_version, etc.
     - raw_frame optionally stores original bytes (LONGBLOB)
     """
+
     __tablename__ = "telemetry_samples"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -70,12 +71,11 @@ class TelemetrySample(Base):
     metrics_json: Mapped[dict] = mapped_column(JSON, nullable=False)
     quality_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
-    # Optional extracted fields (fast filters)
     crc_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     frame_seq: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     raw_frame: Mapped[bytes | None] = mapped_column(LONGBLOB, nullable=True)
-    source: Mapped[str | None] = mapped_column(String(32), nullable=True)  # simulator|serial|other
+    source: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DATETIME(fsp=6),
@@ -83,8 +83,7 @@ class TelemetrySample(Base):
         nullable=False,
     )
 
-    device: Mapped["Device"] = relationship(back_populates="telemetry")
+    device: Mapped[Device] = relationship(back_populates="telemetry")
 
 
-# Chart/query optimized composite index
 Index("ix_telemetry_device_ts", TelemetrySample.device_id, TelemetrySample.ts)

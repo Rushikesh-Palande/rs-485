@@ -4,8 +4,8 @@ version = "0.1.0"
 description = "Enterprise RS-485 telemetry + realtime analytics platform"
 requires-python = ">=3.11"
 readme = "README.md"
-license = {text = "Proprietary"}
-authors = [{name="RS485 Team"}]
+license = { text = "Proprietary" }
+authors = [{ name = "RS485 Team" }]
 
 dependencies = []
 
@@ -15,9 +15,19 @@ dev-dependencies = []
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-select = ["E", "F", "I", "B", "UP", "SIM", "C4", "PL", "RUF"]
-ignore = ["PLR0913", "PLR2004"] # adjust later
 src = ["backend/src"]
+
+[tool.ruff.lint]
+# Enterprise: keep strict & modern, but practical.
+select = ["E", "F", "I", "B", "UP", "SIM", "C4", "PL", "RUF"]
+ignore = [
+  "PLR0913", # too many args (common in FastAPI deps)
+  "PLR2004"  # magic value comparisons (sometimes fine in routing/logic)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI idiom: Query(...) in signature is valid; Ruff's B008 doesn't apply well here.
+"backend/src/rs485_app/api/routers/*.py" = ["B008"]
 
 [tool.black]
 line-length = 100

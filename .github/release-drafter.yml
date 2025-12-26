@@ -10,12 +10,13 @@ categories:
     labels: ["chore", "refactor", "ci", "docs"]
 
 change-template: "- $TITLE (#$NUMBER) — @$AUTHOR"
+
 template: |
   ## What’s Changed
   $CHANGES
 
-  ## Installers
-  - Windows / macOS / Linux installers are attached to this release.
+  ## Artifacts
+  - Desktop installers (Windows/macOS/Linux) are attached to this release.
   - Docker image published to GHCR.
 
   ## Notes
