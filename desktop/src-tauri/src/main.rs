@@ -3,6 +3,7 @@
 use std::{
   fs,
   net::TcpStream,
+  path::Path,
   process::{Child, Command, Stdio},
   sync::{Arc, Mutex},
   thread,
@@ -167,6 +168,50 @@ fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
   }
 }
 
+#[tauri::command]
+fn list_serial_ports() -> Vec<String> {
+  let mut ports: Vec<String> = serialport::available_ports()
+    .map(|ports| ports.into_iter().map(|port| port.port_name).collect())
+    .unwrap_or_default();
+
+  if ports.is_empty() {
+    if let Ok(entries) = fs::read_dir("/dev") {
+      for entry in entries.flatten() {
+        if let Ok(name) = entry.file_name().into_string() {
+          if name.starts_with("ttyUSB") || name.starts_with("ttyACM") {
+            ports.push(format!("/dev/{name}"));
+          }
+        }
+      }
+    }
+
+    if let Ok(entries) = fs::read_dir("/dev/serial/by-id") {
+      for entry in entries.flatten() {
+        let path = entry.path();
+        if let Ok(target) = fs::read_link(&path) {
+          let resolved = if target.is_absolute() {
+            target
+          } else {
+            path.parent()
+              .unwrap_or_else(|| Path::new("/dev"))
+              .join(target)
+          };
+          if let Ok(canon) = resolved.canonicalize() {
+            ports.push(canon.display().to_string());
+          } else {
+            ports.push(resolved.display().to_string());
+          }
+        }
+      }
+    }
+
+    ports.sort();
+    ports.dedup();
+  }
+
+  ports
+}
+
 fn read_first_match(path: &str, prefix: &str) -> Option<String> {
   let contents = fs::read_to_string(path).ok()?;
   contents
@@ -218,6 +263,7 @@ fn system_info_string() -> String {
 
 fn main() {
   tauri::Builder::default()
+    .invoke_handler(tauri::generate_handler![list_serial_ports])
     .plugin(tauri_plugin_shell::init())
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_fs::init())

@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Bell,
@@ -357,6 +357,32 @@ function DeviceConfiguration() {
     frameFormat,
     modbusEnabled,
   } = useAppSelector((state) => state.config);
+  const [detectedPorts, setDetectedPorts] = useState<string[]>([]);
+  const [isDetecting, setIsDetecting] = useState(false);
+
+  const detectPorts = useCallback(async () => {
+    setIsDetecting(true);
+    try {
+      const { invoke, isTauri } = await import("@tauri-apps/api/core");
+      if (!isTauri()) {
+        setDetectedPorts([]);
+        return;
+      }
+      const ports = await invoke<string[]>("list_serial_ports");
+      setDetectedPorts(ports ?? []);
+      if (ports?.length && port.trim() === "") {
+        dispatch(setPort(ports[0]));
+      }
+    } catch {
+      setDetectedPorts([]);
+    } finally {
+      setIsDetecting(false);
+    }
+  }, [dispatch, port]);
+
+  useEffect(() => {
+    detectPorts().catch(() => {});
+  }, [detectPorts]);
 
   return (
     <PageShell
@@ -371,16 +397,39 @@ function DeviceConfiguration() {
             <div className="text-xs font-extrabold text-slate-300">Line Settings</div>
             <div className="mt-3 grid gap-4 lg:grid-cols-2">
               <div className="space-y-3">
-                <Select
-                  label="Port:"
-                  value={port}
-                  onChange={(value) => dispatch(setPort(value))}
-                  options={["/dev/ttyUSB0", "/dev/ttymxc0", "COM3", "COM4"]}
-                  className="w-full"
-                />
-                <div className="text-[11px] text-slate-500">
-                  Linux: /dev/ttyUSB0, /dev/ttymxc0 • Windows: COM3, COM4
-                </div>
+                <label className="flex items-center gap-2">
+                  <span className="min-w-[120px] text-xs font-semibold text-slate-300">Port:</span>
+                  <div className="flex flex-1 items-center gap-2">
+                    <div className="relative flex-1">
+                      <select
+                        value={port}
+                        onChange={(e) => dispatch(setPort(e.target.value))}
+                        className="h-9 w-full appearance-none rounded-lg bg-neutral-950/70 px-3 pr-9 text-sm font-medium text-slate-100 ring-1 ring-white/10 shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-400/40"
+                      >
+                        {detectedPorts.length === 0 ? (
+                          <option value="">No ports detected</option>
+                        ) : null}
+                        {!detectedPorts.includes(port) && port ? (
+                          <option value={port}>{port}</option>
+                        ) : null}
+                        {detectedPorts.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => detectPorts()}
+                      className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-semibold text-slate-200 hover:bg-white/10"
+                      disabled={isDetecting}
+                    >
+                      {isDetecting ? "Detecting..." : "Detect"}
+                    </button>
+                  </div>
+                </label>
                 <Select
                   label="Baud Rate:"
                   value={baud}

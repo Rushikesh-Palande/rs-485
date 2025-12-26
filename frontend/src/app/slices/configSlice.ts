@@ -13,7 +13,7 @@ type ConfigState = {
 };
 
 const initialState: ConfigState = {
-  port: "/dev/ttyUSB0",
+  port: "",
   baud: "9600",
   parity: "Even",
   stopBits: "2",
