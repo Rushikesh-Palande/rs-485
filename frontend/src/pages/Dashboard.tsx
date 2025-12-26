@@ -6,6 +6,7 @@ import {
   PanelLeftOpen,
   ArrowLeft,
   ChevronDown,
+  RefreshCw,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../app/hooks";
 import type { PillTone, Stat } from "../app/types";
@@ -360,7 +361,8 @@ function DeviceConfiguration() {
   const [detectedPorts, setDetectedPorts] = useState<string[]>([]);
   const [isDetecting, setIsDetecting] = useState(false);
 
-  const detectPorts = useCallback(async () => {
+  const detectPorts = useCallback(
+    async (currentPort: string) => {
     setIsDetecting(true);
     try {
       const { invoke, isTauri } = await import("@tauri-apps/api/core");
@@ -369,20 +371,20 @@ function DeviceConfiguration() {
         return;
       }
       const ports = await invoke<string[]>("list_serial_ports");
-      setDetectedPorts(ports ?? []);
-      if (ports?.length && port.trim() === "") {
-        dispatch(setPort(ports[0]));
+      const resolvedPorts = ports ?? [];
+      setDetectedPorts(resolvedPorts);
+      if (resolvedPorts.length > 0 && currentPort.trim() === "") {
+        dispatch(setPort(resolvedPorts[0]));
       }
     } catch {
       setDetectedPorts([]);
     } finally {
       setIsDetecting(false);
     }
-  }, [dispatch, port]);
+  },
+    [dispatch]
+  );
 
-  useEffect(() => {
-    detectPorts().catch(() => {});
-  }, [detectPorts]);
 
   return (
     <PageShell
@@ -404,6 +406,7 @@ function DeviceConfiguration() {
                       <select
                         value={port}
                         onChange={(e) => dispatch(setPort(e.target.value))}
+                        disabled={detectedPorts.length === 0}
                         className="h-9 w-full appearance-none rounded-lg bg-neutral-950/70 px-3 pr-9 text-sm font-medium text-slate-100 ring-1 ring-white/10 shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-400/40"
                       >
                         {detectedPorts.length === 0 ? (
@@ -422,11 +425,13 @@ function DeviceConfiguration() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => detectPorts()}
+                      onClick={() => detectPorts(port)}
                       className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-semibold text-slate-200 hover:bg-white/10"
                       disabled={isDetecting}
+                      title={isDetecting ? "Detecting ports" : "Detect ports"}
+                      aria-label="Detect ports"
                     >
-                      {isDetecting ? "Detecting..." : "Detect"}
+                      <RefreshCw className={cn("h-4 w-4", isDetecting && "animate-spin")} />
                     </button>
                   </div>
                 </label>

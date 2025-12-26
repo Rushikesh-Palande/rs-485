@@ -174,41 +174,39 @@ fn list_serial_ports() -> Vec<String> {
     .map(|ports| ports.into_iter().map(|port| port.port_name).collect())
     .unwrap_or_default();
 
-  if ports.is_empty() {
-    if let Ok(entries) = fs::read_dir("/dev") {
-      for entry in entries.flatten() {
-        if let Ok(name) = entry.file_name().into_string() {
-          if name.starts_with("ttyUSB") || name.starts_with("ttyACM") {
-            ports.push(format!("/dev/{name}"));
-          }
+  if let Ok(entries) = fs::read_dir("/dev") {
+    for entry in entries.flatten() {
+      if let Ok(name) = entry.file_name().into_string() {
+        if name.starts_with("ttyUSB") || name.starts_with("ttyACM") {
+          ports.push(format!("/dev/{name}"));
         }
       }
     }
-
-    if let Ok(entries) = fs::read_dir("/dev/serial/by-id") {
-      for entry in entries.flatten() {
-        let path = entry.path();
-        if let Ok(target) = fs::read_link(&path) {
-          let resolved = if target.is_absolute() {
-            target
-          } else {
-            path.parent()
-              .unwrap_or_else(|| Path::new("/dev"))
-              .join(target)
-          };
-          if let Ok(canon) = resolved.canonicalize() {
-            ports.push(canon.display().to_string());
-          } else {
-            ports.push(resolved.display().to_string());
-          }
-        }
-      }
-    }
-
-    ports.sort();
-    ports.dedup();
   }
 
+  if let Ok(entries) = fs::read_dir("/dev/serial/by-id") {
+    for entry in entries.flatten() {
+      let path = entry.path();
+      if let Ok(target) = fs::read_link(&path) {
+        let resolved = if target.is_absolute() {
+          target
+        } else {
+          path
+            .parent()
+            .unwrap_or_else(|| Path::new("/dev"))
+            .join(target)
+        };
+        if let Ok(canon) = resolved.canonicalize() {
+          ports.push(canon.display().to_string());
+        } else {
+          ports.push(resolved.display().to_string());
+        }
+      }
+    }
+  }
+
+  ports.sort();
+  ports.dedup();
   ports
 }
 
