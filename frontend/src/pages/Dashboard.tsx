@@ -5,8 +5,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ArrowLeft,
-  Play,
-  Pause,
   ChevronDown,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../app/hooks";
@@ -29,7 +27,6 @@ import {
   setCommand,
   toggleConnState,
 } from "../app/slices/runtimeSlice";
-import { setGraphMode, toggleRunning } from "../app/slices/managementSlice";
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -560,9 +557,6 @@ function DeviceManagement() {
   const dispatch = useAppDispatch();
   const { selectedDeviceId, devices } = useAppSelector((state) => state.devices);
   const { connState, ready } = useAppSelector((state) => state.runtime);
-  const { graphMode, running, sensorFilter, canFilter } = useAppSelector(
-    (state) => state.management
-  );
   const device = devices.find((item) => item.id === selectedDeviceId) ?? null;
 
   const stats = useMemo<Stat[]>(
@@ -615,79 +609,6 @@ function DeviceManagement() {
         </div>
       </Card>
 
-      <Card
-        title="Event Graph"
-        right={
-          <div className="flex items-center gap-3">
-            <div className="flex rounded-lg bg-white/5 p-1 ring-1 ring-white/10">
-              {(["Live", "Historical"] as const).map((m) => (
-                <button
-                  type="button"
-                  key={m}
-                  onClick={() => dispatch(setGraphMode(m))}
-                  className={cn(
-                    "rounded-md px-4 py-2 text-xs font-bold transition",
-                    graphMode === m
-                      ? "bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow"
-                      : "text-slate-300 hover:text-slate-100"
-                  )}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-
-            <PrimaryButton
-              icon={running ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-              onClick={() => dispatch(toggleRunning())}
-            >
-              {running ? "Stop" : "Start"}
-            </PrimaryButton>
-          </div>
-        }
-      >
-        <div className="rounded-lg bg-neutral-950/40 p-4 ring-1 ring-white/10">
-          <div className="grid gap-6 md:grid-cols-2">
-            <div>
-              <div className="text-xs font-extrabold text-slate-300">Filter by Sensors</div>
-              <div className="mt-2 flex items-center justify-between rounded-lg bg-neutral-950/60 px-4 py-3 ring-1 ring-white/10">
-                <div className="text-sm font-semibold text-slate-200">
-                  {sensorFilter}
-                </div>
-                <ChevronDown className="h-4 w-4 text-slate-400" />
-              </div>
-            </div>
-            <div>
-              <div className="text-xs font-extrabold text-slate-300">Filter by CAN ID</div>
-              <div className="mt-2 flex items-center justify-between rounded-lg bg-neutral-950/60 px-4 py-3 ring-1 ring-white/10">
-                <div className="text-sm font-semibold text-slate-200">{canFilter}</div>
-                <ChevronDown className="h-4 w-4 text-slate-400" />
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 rounded-lg bg-neutral-950/50 p-5 ring-1 ring-white/10">
-            <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-400">
-              {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-full bg-neutral-500" />
-                  <span>Sensor {i + 1}</span>
-                </div>
-              ))}
-              <div className="flex items-center gap-2">
-                <span className="h-3 w-3 rounded-full bg-neutral-200" />
-                <span>Events</span>
-              </div>
-            </div>
-
-            <div className="mt-4 h-56 rounded-lg bg-neutral-950 ring-1 ring-white/10">
-              <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-500">
-                Chart placeholder
-              </div>
-            </div>
-          </div>
-        </div>
-      </Card>
     </PageShell>
   );
 }

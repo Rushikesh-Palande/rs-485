@@ -14,7 +14,7 @@ use tauri::{
   AppHandle, Emitter, Manager, Runtime,
 };
 
-use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_autostart::MacosLauncher;
 
 /// Shared state: backend child process handle.
 /// Using std::process::Child (stable) avoids plugin-shell private API issues.
@@ -150,17 +150,10 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu::Menu
 
   // Custom menu items with stable IDs (so matching works reliably)
   let show = MenuItem::with_id(app, "menu.show", "Show Window", true, None::<&str>)?;
-  let restart_backend =
-    MenuItem::with_id(app, "menu.restart_backend", "Restart Backend", true, None::<&str>)?;
-  let toggle_autostart =
-    MenuItem::with_id(app, "menu.toggle_autostart", "Toggle Auto-start", true, None::<&str>)?;
-
   let menu = MenuBuilder::new(app)
     .item(&about)
     .separator()
     .item(&show)
-    .item(&restart_backend)
-    .item(&toggle_autostart)
     .separator()
     .item(&quit)
     .build()?;
@@ -221,24 +214,6 @@ fn main() {
       match id {
         "menu.show" => {
           show_main_window(app);
-        }
-        "menu.restart_backend" => {
-          kill_backend(&state);
-          let _ = spawn_backend(app, &state);
-        }
-        "menu.toggle_autostart" => {
-          // Minimal toggle.
-          // In a real app we’d persist a setting and read it on boot.
-          // Here: if enabled => disable, else enable.
-          let autostart = app.autolaunch();
-          let currently_enabled = autostart.is_enabled().unwrap_or(false);
-          if currently_enabled {
-            let _ = autostart.disable();
-            let _ = app.emit("autostart:disabled", ());
-          } else {
-            let _ = autostart.enable();
-            let _ = app.emit("autostart:enabled", ());
-          }
         }
         "quit" => {
           kill_backend(&state);
