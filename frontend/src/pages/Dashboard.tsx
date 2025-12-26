@@ -624,9 +624,8 @@ function DeviceManagement() {
   const { selectedDeviceId, devices } = useAppSelector((state) => state.devices);
   const { connState, ready, command, logText } = useAppSelector((state) => state.runtime);
   const device = devices.find((item) => item.id === selectedDeviceId) ?? null;
-  const { port, baud, parity, stopBits, dataBits, readTimeout, writeTimeout } = useAppSelector(
-    (state) => state.config
-  );
+  const { port, baud, parity, stopBits, dataBits, readTimeout, writeTimeout, frameFormat } =
+    useAppSelector((state) => state.config);
 
   const toggleConnection = async () => {
     const { isTauri, invoke } = await import("@tauri-apps/api/core");
@@ -661,6 +660,54 @@ function DeviceManagement() {
       dispatch(setConnState("Connected"));
     } catch {
       dispatch(setConnState("Disconnected"));
+    }
+  };
+
+  const sendSerialCommand = async () => {
+    if (!command.trim()) {
+      return;
+    }
+    dispatch(appendLog(`[Send] ${command.trim()}`));
+
+    const { isTauri, invoke } = await import("@tauri-apps/api/core");
+    if (!isTauri()) {
+      dispatch(setCommand(""));
+      return;
+    }
+
+    try {
+      const written = await invoke<number>("write_serial_data", {
+        data: command.trim(),
+        format: frameFormat === "Hex" ? "hex" : "text",
+      });
+      dispatch(appendLog(`[Send OK] ${written} bytes`));
+    } catch (error) {
+      dispatch(appendLog(`[Error] Write failed: ${String(error)}`));
+    } finally {
+      dispatch(setCommand(""));
+    }
+  };
+
+  const readSerialData = async () => {
+    const { isTauri, invoke } = await import("@tauri-apps/api/core");
+    if (!isTauri()) {
+      dispatch(appendLog("[Error] Serial read requires the desktop app."));
+      return;
+    }
+
+    try {
+      const payload = await invoke<{ len: number; text: string; hex: string }>("read_serial_data", {
+        maxBytes: 1024,
+      });
+      if (payload.len === 0) {
+        dispatch(appendLog("[Read] No data"));
+        return;
+      }
+      const line = frameFormat === "Hex" ? payload.hex : payload.text;
+      dispatch(appendLog(`[Read OK] ${payload.len} bytes`));
+      dispatch(appendLog(`[Read] ${line}`));
+    } catch (error) {
+      dispatch(appendLog(`[Error] Read failed: ${String(error)}`));
     }
   };
 
@@ -737,14 +784,9 @@ function DeviceManagement() {
                 placeholder="Enter command…"
                 className="h-10 flex-1 rounded-lg bg-neutral-950/70 px-3 text-sm text-slate-100 ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-orange-400/40"
               />
-              <PrimaryButton
-                onClick={() => {
-                  if (!command.trim()) return;
-                  dispatch(appendLog(`[Send] ${command.trim()}`));
-                  dispatch(setCommand(""));
-                }}
-              >
-                Send
+              <PrimaryButton onClick={() => void sendSerialCommand()}>Send</PrimaryButton>
+              <PrimaryButton variant="soft" onClick={() => void readSerialData()}>
+                Read
               </PrimaryButton>
             </div>
 
@@ -773,6 +815,7 @@ function DeviceManagement() {
             <textarea
               value={logText}
               readOnly
+              placeholder="No session data."
               className="mt-3 h-52 w-full resize-none rounded-lg bg-neutral-950 p-3 text-xs text-slate-300 ring-1 ring-white/10 focus:outline-none"
             />
           </div>

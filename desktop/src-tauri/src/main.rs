@@ -2,6 +2,7 @@
 
 use std::{
   fs,
+  io::{ErrorKind, Read, Write},
   net::TcpStream,
   path::Path,
   process::{Child, Command, Stdio},
@@ -243,6 +244,14 @@ struct SerialStatus {
   handle: Option<i64>,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerialRead {
+  len: usize,
+  text: String,
+  hex: String,
+}
+
 fn parse_parity(parity: &str) -> Result<serialport::Parity, String> {
   match parity {
     "None" => Ok(serialport::Parity::None),
@@ -268,6 +277,30 @@ fn parse_data_bits(data_bits: u8) -> Result<serialport::DataBits, String> {
     8 => Ok(serialport::DataBits::Eight),
     _ => Err(format!("Unsupported data bits: {data_bits}")),
   }
+}
+
+fn hex_to_bytes(input: &str) -> Result<Vec<u8>, String> {
+  let filtered: String = input.chars().filter(|c| !c.is_whitespace()).collect();
+  if filtered.len() % 2 != 0 {
+    return Err("Hex input must have an even number of digits".to_string());
+  }
+
+  let mut bytes = Vec::with_capacity(filtered.len() / 2);
+  let chars: Vec<char> = filtered.chars().collect();
+  for i in (0..chars.len()).step_by(2) {
+    let hi = chars[i].to_digit(16).ok_or_else(|| "Invalid hex digit".to_string())?;
+    let lo = chars[i + 1].to_digit(16).ok_or_else(|| "Invalid hex digit".to_string())?;
+    bytes.push(((hi << 4) | lo) as u8);
+  }
+  Ok(bytes)
+}
+
+fn bytes_to_hex(bytes: &[u8]) -> String {
+  bytes
+    .iter()
+    .map(|b| format!("{:02X}", b))
+    .collect::<Vec<_>>()
+    .join(" ")
 }
 
 #[tauri::command]
@@ -352,7 +385,46 @@ fn open_serial_port(state: State<SerialState>, config: SerialConfig) -> Result<S
 fn close_serial_port(state: State<SerialState>) -> Result<(), String> {
   let mut guard = state.port.lock().map_err(|_| "Serial port mutex poisoned".to_string())?;
   *guard = None;
+  eprintln!("[serial] close ok");
   Ok(())
+}
+
+#[tauri::command]
+fn write_serial_data(
+  state: State<SerialState>,
+  data: String,
+  format: Option<String>,
+) -> Result<usize, String> {
+  let mut guard = state.port.lock().map_err(|_| "Serial port mutex poisoned".to_string())?;
+  let port = guard.as_mut().ok_or_else(|| "Serial port not open".to_string())?;
+  let bytes = match format.as_deref() {
+    Some("hex") => hex_to_bytes(&data)?,
+    _ => data.into_bytes(),
+  };
+
+  port.write_all(&bytes).map_err(|err| err.to_string())?;
+  port.flush().map_err(|err| err.to_string())?;
+  eprintln!("[serial] write ok bytes={}", bytes.len());
+  Ok(bytes.len())
+}
+
+#[tauri::command]
+fn read_serial_data(state: State<SerialState>, max_bytes: Option<usize>) -> Result<SerialRead, String> {
+  let mut guard = state.port.lock().map_err(|_| "Serial port mutex poisoned".to_string())?;
+  let port = guard.as_mut().ok_or_else(|| "Serial port not open".to_string())?;
+  let mut buf = vec![0u8; max_bytes.unwrap_or(1024)];
+
+  let n = match port.read(&mut buf) {
+    Ok(count) => count,
+    Err(err) if err.kind() == ErrorKind::TimedOut => 0,
+    Err(err) => return Err(err.to_string()),
+  };
+
+  buf.truncate(n);
+  let text = String::from_utf8_lossy(&buf).to_string();
+  let hex = bytes_to_hex(&buf);
+  eprintln!("[serial] read ok bytes={}", n);
+  Ok(SerialRead { len: n, text, hex })
 }
 
 fn read_first_match(path: &str, prefix: &str) -> Option<String> {
@@ -406,7 +478,13 @@ fn system_info_string() -> String {
 
 fn main() {
   tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![list_serial_ports, open_serial_port, close_serial_port])
+    .invoke_handler(tauri::generate_handler![
+      list_serial_ports,
+      open_serial_port,
+      close_serial_port,
+      write_serial_data,
+      read_serial_data
+    ])
     .plugin(tauri_plugin_shell::init())
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_fs::init())

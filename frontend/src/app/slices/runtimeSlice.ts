@@ -19,8 +19,7 @@ const initialState: RuntimeState = {
     "READ ok\nDevice: 01\nVoltage: 12.3 V\nCurrent: 1.04 A\nTemp: 36.8 C",
   errors: "Framing error (last 5 min: 2)",
   command: "READ 01",
-  logText:
-    "[12:41:12] Port open: /dev/ttyUSB0 @115200\n[12:41:17] RX: 3A 30 31 20 52 45 41 44 0D 0A\n[12:41:18] TX: READ 01\n[12:41:19] RX: 7E 44 41 54 41 3A 31 32 33 2E 34 0D 0A\n",
+  logText: "",
 };
 
 const runtimeSlice = createSlice({

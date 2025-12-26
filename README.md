@@ -211,6 +211,18 @@ This repo is configured to **hide window on close** and keep tray icon alive.
 ### Backend crashes in desktop
 A watchdog checks port `127.0.0.1:8000` and restarts the sidecar if it dies.
 
+### Serial port debug (Tauri desktop)
+- Run the desktop app with logs: `cd desktop && npm run dev`
+- Save config in the UI, then Connect to open the port.
+- Tauri terminal logs include:
+  - `[serial] open requested ...`
+  - `[serial] open ok ...`
+  - `[serial] write ok bytes=...`
+  - `[serial] read ok bytes=...`
+  - `[serial] close ok`
+- If the port is busy, find the owning process: `lsof /dev/ttyUSB0`
+- Verify the configured settings when the port is closed: `stty -F /dev/ttyUSB0 -a`
+
 ---
 
 ## License
