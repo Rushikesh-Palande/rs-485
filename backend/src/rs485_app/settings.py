@@ -68,7 +68,13 @@ class Settings(BaseSettings):
         alias="SERIAL_MODE",
         description="simulator | serial | wireless (future)",
     )
-    serial_port: str = Field(default="/dev/ttyUSB0", alias="SERIAL_PORT")
+    serial_port: str = Field(
+        default="/dev/ttyUSB0",
+        alias="SERIAL_PORT",
+        description=(
+            "Serial device path. Use 'auto' to discover a COM port (Windows) " "or tty (Linux/Mac)."
+        ),
+    )
     serial_baudrate: int = Field(default=115200, alias="SERIAL_BAUDRATE")
 
     # Simulator

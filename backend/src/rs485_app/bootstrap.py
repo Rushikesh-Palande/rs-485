@@ -8,6 +8,7 @@ import sqlalchemy as sa
 from rs485_app.infra.db.session import create_engine_from_settings
 from rs485_app.infra.db.writer import TelemetryDbWriter
 from rs485_app.infra.messaging.event_bus_inmem import InMemoryEventBus
+from rs485_app.infra.rs485.serial_auto import resolve_serial_port
 from rs485_app.infra.rs485.simulator import TelemetrySimulator
 from rs485_app.logging_config import get_logger
 from rs485_app.settings import Settings
@@ -74,6 +75,24 @@ class AppRuntime:
             )
             self._task = asyncio.create_task(sim.run(pipeline), name="telemetry-simulator")
             log.info("runtime_started", mode="simulator")
+            return
+
+        if self.settings.serial_mode == "serial":
+            try:
+                port = resolve_serial_port(self.settings.serial_port)
+                log.info(
+                    "serial_port_resolved",
+                    port=port,
+                    baudrate=self.settings.serial_baudrate,
+                    mode=self.settings.serial_mode,
+                )
+            except Exception:
+                log.exception("serial_port_resolve_failed")
+                raise
+
+            # Placeholder: actual serial ingestion still needs implementation.
+            log.warning("runtime_ingestion_mode_not_implemented_yet", mode="serial")
+            log.info("runtime_started", mode="serial", serial_port=port)
             return
 
         log.warning("runtime_ingestion_mode_not_implemented_yet", mode=self.settings.serial_mode)
