@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::{
+  fs,
   net::TcpStream,
   process::{Child, Command, Stdio},
   sync::{Arc, Mutex},
@@ -15,6 +16,7 @@ use tauri::{
 };
 
 use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 /// Shared state: backend child process handle.
 /// Using std::process::Child (stable) avoids plugin-shell private API issues.
@@ -146,14 +148,11 @@ fn start_watchdog<R: Runtime>(app: AppHandle<R>, state: BackendState) {
 
 fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu::Menu<R>> {
   let quit = PredefinedMenuItem::quit(app, None)?;
-  let about = PredefinedMenuItem::about(app, None, None)?;
 
   // Custom menu items with stable IDs (so matching works reliably)
-  let show = MenuItem::with_id(app, "menu.show", "Show Window", true, None::<&str>)?;
+  let about = MenuItem::with_id(app, "menu.about", "About", true, None::<&str>)?;
   let menu = MenuBuilder::new(app)
     .item(&about)
-    .separator()
-    .item(&show)
     .separator()
     .item(&quit)
     .build()?;
@@ -166,6 +165,55 @@ fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
     let _ = w.show();
     let _ = w.set_focus();
   }
+}
+
+fn read_first_match(path: &str, prefix: &str) -> Option<String> {
+  let contents = fs::read_to_string(path).ok()?;
+  contents
+    .lines()
+    .find_map(|line| line.strip_prefix(prefix).map(|value| value.trim().to_string()))
+}
+
+fn system_info_string() -> String {
+  let os_pretty = read_first_match("/etc/os-release", "PRETTY_NAME=").map(|value| {
+    value.trim_matches('"').to_string()
+  });
+  let kernel = fs::read_to_string("/proc/sys/kernel/osrelease").ok().map(|s| s.trim().to_string());
+  let hostname = fs::read_to_string("/proc/sys/kernel/hostname").ok().map(|s| s.trim().to_string());
+
+  let cpu_model = read_first_match("/proc/cpuinfo", "model name\t: ");
+  let cpu_cores = fs::read_to_string("/proc/cpuinfo")
+    .ok()
+    .map(|s| s.lines().filter(|line| line.starts_with("processor\t:")).count());
+  let mem_total_kb = read_first_match("/proc/meminfo", "MemTotal:")
+    .and_then(|value| value.split_whitespace().next().and_then(|v| v.parse::<u64>().ok()));
+  let mem_total_gb = mem_total_kb.map(|kb| (kb as f64) / 1024.0 / 1024.0);
+
+  let distro = std::env::var("WSL_DISTRO_NAME").ok();
+  let is_wsl = distro.is_some() || kernel.as_deref().unwrap_or("").to_lowercase().contains("microsoft");
+
+  let mut lines = Vec::new();
+  lines.push(format!("OS: {}", os_pretty.unwrap_or_else(|| std::env::consts::OS.to_string())));
+  lines.push(format!("Kernel: {}", kernel.unwrap_or_else(|| "unknown".to_string())));
+  lines.push(format!("Arch: {}", std::env::consts::ARCH));
+  lines.push(format!("Hostname: {}", hostname.unwrap_or_else(|| "unknown".to_string())));
+  if is_wsl {
+    lines.push("WSL: true".to_string());
+    if let Some(distro_name) = distro {
+      lines.push(format!("WSL Distro: {}", distro_name));
+    }
+  }
+  if let Some(model) = cpu_model {
+    lines.push(format!("CPU: {}", model));
+  }
+  if let Some(cores) = cpu_cores {
+    lines.push(format!("CPU Cores: {}", cores));
+  }
+  if let Some(gb) = mem_total_gb {
+    lines.push(format!("Memory: {:.2} GB", gb));
+  }
+
+  lines.join("\n")
 }
 
 fn main() {
@@ -212,8 +260,21 @@ fn main() {
       let state = app.state::<BackendState>();
 
       match id {
-        "menu.show" => {
-          show_main_window(app);
+        "menu.about" => {
+          let info = app.package_info();
+          let message = format!(
+            "{} v{}\nRS-485 Enterprise Telemetry Desktop\n\n{}",
+            info.name,
+            info.version,
+            system_info_string()
+          );
+          app
+            .dialog()
+            .message(message)
+            .title("About")
+            .kind(MessageDialogKind::Info)
+            .buttons(MessageDialogButtons::Ok)
+            .show(|_| {});
         }
         "quit" => {
           kill_backend(&state);
