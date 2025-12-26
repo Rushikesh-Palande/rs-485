@@ -485,6 +485,66 @@ function DeviceConfiguration() {
         </div>
       </Card>
 
+    </PageShell>
+  );
+}
+
+function DeviceManagement() {
+  const dispatch = useAppDispatch();
+  const { selectedDeviceId, devices } = useAppSelector((state) => state.devices);
+  const { connState, ready, command, logText } = useAppSelector((state) => state.runtime);
+  const device = devices.find((item) => item.id === selectedDeviceId) ?? null;
+
+  const stats = useMemo<Stat[]>(
+    () => [
+      { label: "CHANNEL 1 TX", value: 0, unit: "frames" },
+      { label: "CHANNEL 1 RX", value: 0, unit: "frames" },
+      { label: "CHANNEL 2 TX", value: 0, unit: "frames" },
+      { label: "CHANNEL 2 RX", value: 0, unit: "frames" },
+      { label: "TOTAL SENT", value: 0, unit: "frames", variant: "gradient" },
+      { label: "TOTAL RECEIVED", value: 0, unit: "frames", variant: "gradient" },
+      { label: "SUCCESS RATE", value: "0.00", unit: "%", variant: "success" },
+      { label: "ERRORS", value: 0, unit: "frames" },
+      { label: "TX SPEED", value: 0, unit: "fps", variant: "gradient" },
+      { label: "RX SPEED", value: 0, unit: "fps", variant: "gradient" },
+    ],
+    []
+  );
+
+  return (
+    <PageShell
+      pageTitle="Device Monitor"
+      subtitle={device ? `Monitoring ${device.name}` : "Manage and monitor multiple devices"}
+      statusLeft={<Pill tone={connState === "Disconnected" ? "danger" : "success"}>{device?.name ?? "Device 1"}</Pill>}
+      statusRight={
+        <div className="flex items-center gap-3">
+          <Pill tone={connState === "Disconnected" ? "danger" : "success"}>{connState}</Pill>
+          <Pill tone={ready ? "neutral" : "neutral"}>Ready</Pill>
+        </div>
+      }
+      right={
+        <PrimaryButton
+          variant="soft"
+          icon={<ArrowLeft className="h-4 w-4" />}
+          onClick={() => dispatch(setDeviceView("config"))}
+        >
+          Back to Devices
+        </PrimaryButton>
+      }
+    >
+      <Card title="Real-Time Statistics">
+        <div className="grid gap-4 md:grid-cols-5">
+          {stats.slice(0, 5).map((s) => (
+            <StatTile key={s.label} stat={s} />
+          ))}
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-5">
+          {stats.slice(5).map((s) => (
+            <StatTile key={s.label} stat={s} />
+          ))}
+        </div>
+      </Card>
+
       <Card title="Commands & Controls">
         <div className="grid gap-4 md:grid-cols-[1.3fr_1fr]">
           <div className="rounded-lg bg-neutral-950/60 p-4 ring-1 ring-white/10">
@@ -547,65 +607,6 @@ function DeviceConfiguration() {
               className="mt-3 h-52 w-full resize-none rounded-lg bg-neutral-950 p-3 text-xs text-slate-300 ring-1 ring-white/10 focus:outline-none"
             />
           </div>
-        </div>
-      </Card>
-    </PageShell>
-  );
-}
-
-function DeviceManagement() {
-  const dispatch = useAppDispatch();
-  const { selectedDeviceId, devices } = useAppSelector((state) => state.devices);
-  const { connState, ready } = useAppSelector((state) => state.runtime);
-  const device = devices.find((item) => item.id === selectedDeviceId) ?? null;
-
-  const stats = useMemo<Stat[]>(
-    () => [
-      { label: "CHANNEL 1 TX", value: 0, unit: "frames" },
-      { label: "CHANNEL 1 RX", value: 0, unit: "frames" },
-      { label: "CHANNEL 2 TX", value: 0, unit: "frames" },
-      { label: "CHANNEL 2 RX", value: 0, unit: "frames" },
-      { label: "TOTAL SENT", value: 0, unit: "frames", variant: "gradient" },
-      { label: "TOTAL RECEIVED", value: 0, unit: "frames", variant: "gradient" },
-      { label: "SUCCESS RATE", value: "0.00", unit: "%", variant: "success" },
-      { label: "ERRORS", value: 0, unit: "frames" },
-      { label: "TX SPEED", value: 0, unit: "fps", variant: "gradient" },
-      { label: "RX SPEED", value: 0, unit: "fps", variant: "gradient" },
-    ],
-    []
-  );
-
-  return (
-    <PageShell
-      pageTitle="Device Management"
-      subtitle={device ? `Monitoring ${device.name}` : "Manage and monitor multiple devices"}
-      statusLeft={<Pill tone={connState === "Disconnected" ? "danger" : "success"}>{device?.name ?? "Device 1"}</Pill>}
-      statusRight={
-        <div className="flex items-center gap-3">
-          <Pill tone={connState === "Disconnected" ? "danger" : "success"}>{connState}</Pill>
-          <Pill tone={ready ? "neutral" : "neutral"}>Ready</Pill>
-        </div>
-      }
-      right={
-        <PrimaryButton
-          variant="soft"
-          icon={<ArrowLeft className="h-4 w-4" />}
-          onClick={() => dispatch(setDeviceView("config"))}
-        >
-          Back to Devices
-        </PrimaryButton>
-      }
-    >
-      <Card title="Real-Time Statistics">
-        <div className="grid gap-4 md:grid-cols-5">
-          {stats.slice(0, 5).map((s) => (
-            <StatTile key={s.label} stat={s} />
-          ))}
-        </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-5">
-          {stats.slice(5).map((s) => (
-            <StatTile key={s.label} stat={s} />
-          ))}
         </div>
       </Card>
 

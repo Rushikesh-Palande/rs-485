@@ -34,7 +34,7 @@ function AppShell(props: { children: React.ReactNode }) {
             </button>
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold tracking-tight sm:text-base">
-                RS-485 Command Center
+                Command Center
               </div>
               <div className="hidden text-xs text-slate-400 sm:block">
 
