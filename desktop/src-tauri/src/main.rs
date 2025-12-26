@@ -13,17 +13,25 @@ use std::{
 use tauri::{
   menu::{MenuBuilder, MenuItem, PredefinedMenuItem},
   tray::{TrayIconBuilder, TrayIconEvent},
-  AppHandle, Emitter, Manager, Runtime,
+  AppHandle, Emitter, Manager, Runtime, State,
 };
 
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
+#[cfg(unix)]
+use std::os::unix::io::AsRawFd;
+#[cfg(windows)]
+use std::os::windows::io::AsRawHandle;
 /// Shared state: backend child process handle.
 /// Using std::process::Child (stable) avoids plugin-shell private API issues.
 #[derive(Clone)]
 struct BackendState {
   child: Arc<Mutex<Option<Child>>>,
+}
+
+struct SerialState {
+  port: Mutex<Option<Box<dyn serialport::SerialPort>>>,
 }
 
 impl BackendState {
@@ -210,6 +218,143 @@ fn list_serial_ports() -> Vec<String> {
   ports
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SerialConfig {
+  port: String,
+  baud: u32,
+  parity: String,
+  stop_bits: String,
+  data_bits: u8,
+  read_timeout_ms: u64,
+  write_timeout_ms: u64,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerialStatus {
+  port: String,
+  baud: u32,
+  parity: String,
+  stop_bits: String,
+  data_bits: u8,
+  timeout_ms: u64,
+  fd: Option<i64>,
+  handle: Option<i64>,
+}
+
+fn parse_parity(parity: &str) -> Result<serialport::Parity, String> {
+  match parity {
+    "None" => Ok(serialport::Parity::None),
+    "Even" => Ok(serialport::Parity::Even),
+    "Odd" => Ok(serialport::Parity::Odd),
+    _ => Err(format!("Unsupported parity: {parity}")),
+  }
+}
+
+fn parse_stop_bits(stop_bits: &str) -> Result<serialport::StopBits, String> {
+  match stop_bits {
+    "1" => Ok(serialport::StopBits::One),
+    "2" => Ok(serialport::StopBits::Two),
+    _ => Err(format!("Unsupported stop bits: {stop_bits}")),
+  }
+}
+
+fn parse_data_bits(data_bits: u8) -> Result<serialport::DataBits, String> {
+  match data_bits {
+    5 => Ok(serialport::DataBits::Five),
+    6 => Ok(serialport::DataBits::Six),
+    7 => Ok(serialport::DataBits::Seven),
+    8 => Ok(serialport::DataBits::Eight),
+    _ => Err(format!("Unsupported data bits: {data_bits}")),
+  }
+}
+
+#[tauri::command]
+fn open_serial_port(state: State<SerialState>, config: SerialConfig) -> Result<SerialStatus, String> {
+  if config.port.trim().is_empty() {
+    return Err("Port is required".to_string());
+  }
+
+  eprintln!(
+    "[serial] open requested port={} baud={} parity={} stop_bits={} data_bits={} read_timeout_ms={} write_timeout_ms={}",
+    config.port,
+    config.baud,
+    config.parity,
+    config.stop_bits,
+    config.data_bits,
+    config.read_timeout_ms,
+    config.write_timeout_ms
+  );
+
+  {
+    let mut guard = state.port.lock().map_err(|_| "Serial port mutex poisoned".to_string())?;
+    *guard = None;
+  }
+
+  let parity = parse_parity(&config.parity)?;
+  let stop_bits = parse_stop_bits(&config.stop_bits)?;
+  let data_bits = parse_data_bits(config.data_bits)?;
+  let timeout_ms = config.read_timeout_ms.max(config.write_timeout_ms).max(100);
+
+  let builder = serialport::new(config.port.clone(), config.baud)
+    .parity(parity)
+    .stop_bits(stop_bits)
+    .data_bits(data_bits)
+    .timeout(Duration::from_millis(timeout_ms));
+
+  #[cfg(unix)]
+  let (port, fd, handle) = {
+    let port = serialport::TTYPort::open(&builder).map_err(|err| err.to_string())?;
+    let fd = port.as_raw_fd() as i64;
+    (Box::new(port) as Box<dyn serialport::SerialPort>, Some(fd), None)
+  };
+
+  #[cfg(windows)]
+  let (port, fd, handle) = {
+    let port = serialport::COMPort::open(&builder).map_err(|err| err.to_string())?;
+    let handle = port.as_raw_handle() as i64;
+    (Box::new(port) as Box<dyn serialport::SerialPort>, None, Some(handle))
+  };
+
+  #[cfg(not(any(unix, windows)))]
+  let (port, fd, handle) = {
+    let port = builder.open().map_err(|err| err.to_string())?;
+    (port, None, None)
+  };
+
+  let mut guard = state.port.lock().map_err(|_| "Serial port mutex poisoned".to_string())?;
+  *guard = Some(port);
+  eprintln!(
+    "[serial] open ok port={} baud={} parity={} stop_bits={} data_bits={} timeout_ms={} fd={:?} handle={:?}",
+    config.port,
+    config.baud,
+    config.parity,
+    config.stop_bits,
+    config.data_bits,
+    timeout_ms,
+    fd,
+    handle
+  );
+  Ok(SerialStatus {
+    port: config.port,
+    baud: config.baud,
+    parity: config.parity,
+    stop_bits: config.stop_bits,
+    data_bits: config.data_bits,
+    timeout_ms,
+    fd,
+    handle,
+  })
+}
+
+#[tauri::command]
+fn close_serial_port(state: State<SerialState>) -> Result<(), String> {
+  let mut guard = state.port.lock().map_err(|_| "Serial port mutex poisoned".to_string())?;
+  *guard = None;
+  Ok(())
+}
+
 fn read_first_match(path: &str, prefix: &str) -> Option<String> {
   let contents = fs::read_to_string(path).ok()?;
   contents
@@ -261,7 +406,7 @@ fn system_info_string() -> String {
 
 fn main() {
   tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![list_serial_ports])
+    .invoke_handler(tauri::generate_handler![list_serial_ports, open_serial_port, close_serial_port])
     .plugin(tauri_plugin_shell::init())
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_fs::init())
@@ -296,6 +441,9 @@ fn main() {
 
       // Store state globally
       app.manage(state);
+      app.manage(SerialState {
+        port: Mutex::new(None),
+      });
 
       Ok(())
     })

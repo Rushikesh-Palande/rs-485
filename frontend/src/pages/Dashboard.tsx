@@ -26,6 +26,7 @@ import {
   appendLog,
   clearLog,
   setCommand,
+  setConnState,
   toggleConnState,
 } from "../app/slices/runtimeSlice";
 
@@ -103,14 +104,21 @@ function IconButton({
 function Card({
   title,
   right,
+  className,
   children,
 }: {
   title?: string;
   right?: React.ReactNode;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl bg-neutral-900/80 p-6 shadow-[0_14px_40px_rgba(0,0,0,0.45)] ring-1 ring-white/10">
+    <div
+      className={cn(
+        "rounded-xl bg-neutral-900/80 p-6 shadow-[0_14px_40px_rgba(0,0,0,0.45)] ring-1 ring-white/10",
+        className
+      )}
+    >
       {(title || right) && (
         <div className="mb-4 flex items-center justify-between">
           {title ? (
@@ -360,6 +368,54 @@ function DeviceConfiguration() {
   } = useAppSelector((state) => state.config);
   const [detectedPorts, setDetectedPorts] = useState<string[]>([]);
   const [isDetecting, setIsDetecting] = useState(false);
+  const [saveToast, setSaveToast] = useState<{ tone: "success" | "error"; message: string } | null>(
+    null
+  );
+
+  useEffect(() => {
+    if (!saveToast) {
+      return undefined;
+    }
+    const timeoutId = window.setTimeout(() => setSaveToast(null), 5000);
+    return () => window.clearTimeout(timeoutId);
+  }, [saveToast]);
+
+  const applySerialConfig = async () => {
+    const { isTauri, invoke } = await import("@tauri-apps/api/core");
+    if (!isTauri()) {
+      setSaveToast({ tone: "error", message: "Serial configuration requires the desktop app." });
+      return;
+    }
+
+    try {
+      const status = await invoke<{
+        port: string;
+        baud: number;
+        parity: string;
+        stopBits: string;
+        dataBits: number;
+        timeoutMs: number;
+      }>("open_serial_port", {
+        config: {
+          port,
+          baud: Number.parseInt(baud, 10),
+          parity,
+          stopBits,
+          dataBits: Number.parseInt(dataBits, 10),
+          readTimeoutMs: Number.parseInt(readTimeout, 10),
+          writeTimeoutMs: Number.parseInt(writeTimeout, 10),
+        },
+      });
+      dispatch(setConnState("Connected"));
+      setSaveToast({
+        tone: "success",
+        message: `Saved: ${status.port} @${status.baud} (${status.parity}, ${status.stopBits}, ${status.dataBits}b)`,
+      });
+    } catch {
+      dispatch(setConnState("Disconnected"));
+      setSaveToast({ tone: "error", message: "Failed to apply serial configuration." });
+    }
+  };
 
   const detectPorts = useCallback(
     async (currentPort: string) => {
@@ -393,7 +449,27 @@ function DeviceConfiguration() {
       statusLeft={<Pill tone={connState === "Disconnected" ? "danger" : "success"}>{connState}</Pill>}
       statusRight={<Pill tone="neutral">Ready</Pill>}
     >
-      <Card title="Communication Parameters">
+      <Card
+        title="Communication Parameters"
+        right={
+          <PrimaryButton variant="soft" onClick={() => void applySerialConfig()}>
+            Save
+          </PrimaryButton>
+        }
+        className="relative"
+      >
+        {saveToast ? (
+          <div
+            className={cn(
+              "fixed right-6 top-6 z-50 rounded-lg px-3 py-2 text-xs font-semibold shadow-lg ring-1",
+              saveToast.tone === "success"
+                ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/30"
+                : "bg-rose-500/15 text-rose-200 ring-rose-500/30"
+            )}
+          >
+            {saveToast.message}
+          </div>
+        ) : null}
         <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
           <div className="rounded-lg bg-neutral-950/60 p-4 ring-1 ring-white/10">
             <div className="text-xs font-extrabold text-slate-300">Line Settings</div>
@@ -548,6 +624,45 @@ function DeviceManagement() {
   const { selectedDeviceId, devices } = useAppSelector((state) => state.devices);
   const { connState, ready, command, logText } = useAppSelector((state) => state.runtime);
   const device = devices.find((item) => item.id === selectedDeviceId) ?? null;
+  const { port, baud, parity, stopBits, dataBits, readTimeout, writeTimeout } = useAppSelector(
+    (state) => state.config
+  );
+
+  const toggleConnection = async () => {
+    const { isTauri, invoke } = await import("@tauri-apps/api/core");
+    if (!isTauri()) {
+      dispatch(toggleConnState());
+      return;
+    }
+
+    if (connState === "Connected") {
+      try {
+        await invoke("close_serial_port");
+      } catch {
+        // Ignore close errors and reflect UI state.
+      } finally {
+        dispatch(setConnState("Disconnected"));
+      }
+      return;
+    }
+
+    try {
+      await invoke("open_serial_port", {
+        config: {
+          port,
+          baud: Number.parseInt(baud, 10),
+          parity,
+          stopBits,
+          dataBits: Number.parseInt(dataBits, 10),
+          readTimeoutMs: Number.parseInt(readTimeout, 10),
+          writeTimeoutMs: Number.parseInt(writeTimeout, 10),
+        },
+      });
+      dispatch(setConnState("Connected"));
+    } catch {
+      dispatch(setConnState("Disconnected"));
+    }
+  };
 
   const stats = useMemo<Stat[]>(
     () => [
@@ -605,7 +720,7 @@ function DeviceManagement() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="text-xs font-extrabold text-slate-300">Command Entry</div>
               <div className="flex flex-wrap items-center gap-2">
-                <PrimaryButton onClick={() => dispatch(toggleConnState())}>
+                <PrimaryButton onClick={() => void toggleConnection()}>
                   {connState === "Connected" ? "Disconnect" : "Connect"}
                 </PrimaryButton>
                 <PrimaryButton variant="soft" onClick={() => dispatch(clearLog())}>
