@@ -264,7 +264,7 @@ export function DeviceConfiguration() {
                   label="Frame Format:"
                   value={frameFormat}
                   onChange={(value) => dispatch(setFrameFormat(value))}
-                  options={["ASCII", "Hex", "Modbus RTU"]}
+                  options={["ASCII", "Decimal", "Hex", "Modbus RTU"]}
                   className="w-full"
                 />
               </div>
