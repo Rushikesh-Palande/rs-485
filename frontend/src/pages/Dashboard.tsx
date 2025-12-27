@@ -4,14 +4,18 @@ import {
   Bell,
   PanelLeftClose,
   PanelLeftOpen,
+  Activity,
+  Settings,
+  Plus,
   ArrowLeft,
   ChevronDown,
   RefreshCw,
 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../app/hooks";
-import type { PillTone, Stat } from "../app/types";
+import type { AppEvent, ConnState, EventSeverity, PillTone, Stat } from "../app/types";
 import { setNav, setDeviceView, toggleSidebar } from "../app/slices/uiSlice";
-import { addDevice, removeDevice, setSelectedDeviceId } from "../app/slices/devicesSlice";
+import { addDevice, removeDevice, setDeviceConfigured, setSelectedDeviceId } from "../app/slices/devicesSlice";
+import { addEvent } from "../app/slices/eventsSlice";
 import {
   setBaud,
   setFrameFormat,
@@ -32,6 +36,14 @@ import {
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
+}
+
+function buildEvent(payload: Omit<AppEvent, "id" | "ts">): AppEvent {
+  return {
+    ...payload,
+    id: `evt-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    ts: new Date().toISOString(),
+  };
 }
 
 function Pill({
@@ -183,6 +195,7 @@ function Select({
   label,
   className,
   disabled,
+  stacked,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -190,11 +203,24 @@ function Select({
   label?: string;
   className?: string;
   disabled?: boolean;
+  stacked?: boolean;
 }) {
   return (
-    <label className={cn("flex items-center gap-2", className)}>
+    <label
+      className={cn(
+        stacked ? "flex flex-col items-start gap-2" : "flex items-center gap-2",
+        className
+      )}
+    >
       {label ? (
-        <span className="min-w-[120px] text-xs font-semibold text-slate-300">{label}</span>
+        <span
+          className={cn(
+            "text-xs font-semibold text-slate-300",
+            stacked ? "min-w-0" : "min-w-[120px]"
+          )}
+        >
+          {label}
+        </span>
       ) : null}
       <div className="relative">
         <select
@@ -383,6 +409,17 @@ function DeviceConfiguration() {
     const { isTauri, invoke } = await import("@tauri-apps/api/core");
     if (!isTauri()) {
       setSaveToast({ tone: "error", message: "Serial configuration requires the desktop app." });
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: device?.id ?? null,
+            type: "Config",
+            severity: "error",
+            message: "Config save failed: desktop app required.",
+            source: "config",
+          })
+        )
+      );
       return;
     }
 
@@ -406,12 +443,37 @@ function DeviceConfiguration() {
         },
       });
       dispatch(setConnState("Connected"));
+      if (device) {
+        dispatch(setDeviceConfigured({ id: device.id, configured: true }));
+      }
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: device?.id ?? null,
+            type: "Config",
+            severity: "success",
+            message: `Config saved: ${status.port} @ ${status.baud}`,
+            source: "config",
+          })
+        )
+      );
       setSaveToast({
         tone: "success",
         message: `Saved: ${status.port} @${status.baud} (${status.parity}, ${status.stopBits}, ${status.dataBits}b)`,
       });
     } catch {
       dispatch(setConnState("Disconnected"));
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: device?.id ?? null,
+            type: "Config",
+            severity: "error",
+            message: "Config save failed.",
+            source: "config",
+          })
+        )
+      );
       setSaveToast({ tone: "error", message: "Failed to apply serial configuration." });
     }
   };
@@ -471,7 +533,7 @@ function DeviceConfiguration() {
             className={cn(
               "fixed right-6 top-6 z-50 rounded-lg px-3 py-2 text-xs font-semibold shadow-lg ring-1",
               saveToast.tone === "success"
-                ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/30"
+                ? "bg-emerald-500/15 ring-emerald-500/30"
                 : "bg-rose-500/15 text-rose-200 ring-rose-500/30"
             )}
           >
@@ -635,6 +697,17 @@ function DeviceConfiguration() {
             onClick={() => {
               if (!device) return;
               dispatch(removeDevice(device.id));
+              dispatch(
+                addEvent(
+                  buildEvent({
+                    deviceId: device.id,
+                    type: "Device",
+                    severity: "warning",
+                    message: `Device removed (${device.id}).`,
+                    source: "device",
+                  })
+                )
+              );
               dispatch(setNav("dash"));
             }}
           >
@@ -649,8 +722,14 @@ function DeviceConfiguration() {
 function DeviceManagement() {
   const dispatch = useAppDispatch();
   const { selectedDeviceId, devices } = useAppSelector((state) => state.devices);
-  const { connState, ready, command, logText } = useAppSelector((state) => state.runtime);
+  const { connState, ready, command } = useAppSelector((state) => state.runtime);
   const device = devices.find((item) => item.id === selectedDeviceId) ?? null;
+  const logDeviceId = selectedDeviceId ?? "unassigned";
+  const deviceConfigured = device?.configured ?? false;
+  const logText = useAppSelector(
+    (state) => state.runtime.logByDevice[logDeviceId] ?? ""
+  );
+  const displayConnState: ConnState = deviceConfigured ? connState : "Disconnected";
   const { port, baud, parity, stopBits, dataBits, readTimeout, writeTimeout, frameFormat } =
     useAppSelector((state) => state.config);
 
@@ -658,12 +737,34 @@ function DeviceManagement() {
     const { isTauri, invoke } = await import("@tauri-apps/api/core");
     if (!isTauri()) {
       dispatch(toggleConnState());
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: logDeviceId,
+            type: "Connection",
+            severity: "info",
+            message: "Connection toggled (web mode).",
+            source: "system",
+          })
+        )
+      );
       return;
     }
 
     if (connState === "Connected") {
       try {
         await invoke("close_serial_port");
+        dispatch(
+          addEvent(
+            buildEvent({
+              deviceId: logDeviceId,
+              type: "Connection",
+              severity: "info",
+              message: "Serial port closed.",
+              source: "serial",
+            })
+          )
+        );
       } catch {
         // Ignore close errors and reflect UI state.
       } finally {
@@ -685,36 +786,126 @@ function DeviceManagement() {
         },
       });
       dispatch(setConnState("Connected"));
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: logDeviceId,
+            type: "Connection",
+            severity: "success",
+            message: `Serial port opened: ${port} @ ${baud}`,
+            source: "serial",
+          })
+        )
+      );
     } catch {
       dispatch(setConnState("Disconnected"));
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: logDeviceId,
+            type: "Connection",
+            severity: "error",
+            message: "Failed to open serial port.",
+            source: "serial",
+          })
+        )
+      );
     }
   };
 
   const saveSessionLog = async () => {
     if (!logText.trim()) {
-      dispatch(appendLog("[Save] No log data to write"));
+      dispatch(appendLog({ deviceId: logDeviceId, entry: "[Save] No log data to write" }));
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: logDeviceId,
+            type: "System",
+            severity: "info",
+            message: "Save log skipped: no data.",
+            source: "system",
+          })
+        )
+      );
       return;
     }
 
     const { isTauri, invoke } = await import("@tauri-apps/api/core");
     if (!isTauri()) {
-      dispatch(appendLog("[Error] Log saving requires the desktop app."));
+      dispatch(
+        appendLog({ deviceId: logDeviceId, entry: "[Error] Log saving requires the desktop app." })
+      );
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: logDeviceId,
+            type: "System",
+            severity: "error",
+            message: "Log save failed: desktop app required.",
+            source: "system",
+          })
+        )
+      );
       return;
     }
 
     try {
       const path = await invoke<string>("save_session_log", { contents: logText });
-      dispatch(appendLog(`[Save OK] ${path}`));
+      dispatch(appendLog({ deviceId: logDeviceId, entry: `[Save OK] ${path}` }));
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: logDeviceId,
+            type: "System",
+            severity: "success",
+            message: `Session log saved to ${path}`,
+            source: "system",
+          })
+        )
+      );
     } catch (error) {
-      dispatch(appendLog(`[Error] Save failed: ${String(error)}`));
+      dispatch(
+        appendLog({ deviceId: logDeviceId, entry: `[Error] Save failed: ${String(error)}` })
+      );
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: logDeviceId,
+            type: "System",
+            severity: "error",
+            message: `Session log save failed: ${String(error)}`,
+            source: "system",
+          })
+        )
+      );
     }
   };
 
   const sendSerialCommand = async () => {
+    if (!deviceConfigured) {
+      dispatch(
+        appendLog({
+          deviceId: logDeviceId,
+          entry: "[Info] Write: Device not configured. Please configure it first.",
+        })
+      );
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: logDeviceId,
+            type: "Command",
+            severity: "warning",
+            message: "Write blocked: device not configured.",
+            source: "command",
+          })
+        )
+      );
+      return;
+    }
     if (!command.trim()) {
       return;
     }
-    dispatch(appendLog(`[Send] ${command.trim()}`));
+    dispatch(appendLog({ deviceId: logDeviceId, entry: `[Send] ${command.trim()}` }));
 
     const { isTauri, invoke } = await import("@tauri-apps/api/core");
     if (!isTauri()) {
@@ -727,18 +918,99 @@ function DeviceManagement() {
         data: command.trim(),
         format: frameFormat === "Hex" ? "hex" : "text",
       });
-      dispatch(appendLog(`[Send OK] ${written} bytes`));
+      dispatch(appendLog({ deviceId: logDeviceId, entry: `[Send OK] ${written} bytes` }));
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: logDeviceId,
+            type: "Command",
+            severity: "success",
+            message: `Write succeeded (${written} bytes).`,
+            source: "command",
+          })
+        )
+      );
     } catch (error) {
-      dispatch(appendLog(`[Error] Write failed: ${String(error)}`));
+      const errText = String(error);
+      if (errText.includes("Serial port not open")) {
+        dispatch(
+          appendLog({ deviceId: logDeviceId, entry: "[Error] Write failed: Serial port not open." })
+        );
+        dispatch(
+          appendLog({ deviceId: logDeviceId, entry: "[Info] Write: Please configure the device first." })
+        );
+        dispatch(
+          addEvent(
+            buildEvent({
+              deviceId: logDeviceId,
+              type: "Serial",
+              severity: "error",
+              message: "Write failed: serial port not open.",
+              source: "serial",
+            })
+          )
+        );
+      } else {
+        dispatch(
+          appendLog({ deviceId: logDeviceId, entry: `[Error] Write failed: ${errText}` })
+        );
+        dispatch(
+          addEvent(
+            buildEvent({
+              deviceId: logDeviceId,
+              type: "Serial",
+              severity: "error",
+              message: `Write failed: ${errText}`,
+              source: "serial",
+            })
+          )
+        );
+      }
     } finally {
       dispatch(setCommand(""));
     }
   };
 
   const readSerialData = async () => {
+    if (!deviceConfigured) {
+      dispatch(
+        appendLog({
+          deviceId: logDeviceId,
+          entry: "[Info] Read: Device not configured. Please configure it first.",
+        })
+      );
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: logDeviceId,
+            type: "Command",
+            severity: "warning",
+            message: "Read blocked: device not configured.",
+            source: "command",
+          })
+        )
+      );
+      return;
+    }
     const { isTauri, invoke } = await import("@tauri-apps/api/core");
     if (!isTauri()) {
-      dispatch(appendLog("[Error] Serial read requires the desktop app."));
+      dispatch(
+        appendLog({
+          deviceId: logDeviceId,
+          entry: "[Error] Serial read requires the desktop app.",
+        })
+      );
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: logDeviceId,
+            type: "System",
+            severity: "error",
+            message: "Read failed: desktop app required.",
+            source: "system",
+          })
+        )
+      );
       return;
     }
 
@@ -747,14 +1019,49 @@ function DeviceManagement() {
         maxBytes: 1024,
       });
       if (payload.len === 0) {
-        dispatch(appendLog("[Read] No data"));
+        dispatch(appendLog({ deviceId: logDeviceId, entry: "[Read] No data" }));
+        dispatch(
+          addEvent(
+            buildEvent({
+              deviceId: logDeviceId,
+              type: "Command",
+              severity: "info",
+              message: "Read completed: no data.",
+              source: "command",
+            })
+          )
+        );
         return;
       }
       const line = frameFormat === "Hex" ? payload.hex : payload.text;
-      dispatch(appendLog(`[Read OK] ${payload.len} bytes`));
-      dispatch(appendLog(`[Read] ${line}`));
+      dispatch(appendLog({ deviceId: logDeviceId, entry: `[Read OK] ${payload.len} bytes` }));
+      dispatch(appendLog({ deviceId: logDeviceId, entry: `[Read] ${line}` }));
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: logDeviceId,
+            type: "Command",
+            severity: "success",
+            message: `Read succeeded (${payload.len} bytes).`,
+            source: "command",
+          })
+        )
+      );
     } catch (error) {
-      dispatch(appendLog(`[Error] Read failed: ${String(error)}`));
+      dispatch(
+        appendLog({ deviceId: logDeviceId, entry: `[Error] Read failed: ${String(error)}` })
+      );
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: logDeviceId,
+            type: "Serial",
+            severity: "error",
+            message: `Read failed: ${String(error)}`,
+            source: "serial",
+          })
+        )
+      );
     }
   };
 
@@ -781,7 +1088,9 @@ function DeviceManagement() {
       statusLeft={<Pill tone={connState === "Disconnected" ? "danger" : "success"}>{device?.name ?? "Device 1"}</Pill>}
       statusRight={
         <div className="flex items-center gap-3">
-          <Pill tone={connState === "Disconnected" ? "danger" : "success"}>{connState}</Pill>
+          <Pill tone={displayConnState === "Disconnected" ? "danger" : "success"}>
+            {displayConnState}
+          </Pill>
           <Pill tone={ready ? "neutral" : "neutral"}>Ready</Pill>
         </div>
       }
@@ -808,68 +1117,119 @@ function DeviceManagement() {
         </div>
       </Card>
 
-      <Card title="Commands & Controls">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-xs font-extrabold text-slate-300">Session Controls</div>
-          <div className="flex flex-wrap items-center gap-2">
-            <PrimaryButton onClick={() => void toggleConnection()}>
-              {connState === "Connected" ? "Disconnect" : "Connect"}
-            </PrimaryButton>
-            <PrimaryButton variant="soft" onClick={() => dispatch(clearLog())}>
+      <Card
+        title="Commands & Controls"
+        className="bg-transparent p-0 shadow-none border-0"
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-neutral-950/50 px-4 py-3 ">
+            <div>
+              <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-slate-400">
+                Session Controls
+              </div>
+              <div className="mt-1 text-xs text-slate-400">
+                Connect, clear, or save the current device session.
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+            {deviceConfigured ? (
+              <PrimaryButton onClick={() => void toggleConnection()}>
+                {connState === "Connected" ? "Disconnect" : "Connect"}
+              </PrimaryButton>
+            ) : null}
+            <PrimaryButton variant="soft" onClick={() => dispatch(clearLog(logDeviceId))}>
               Clear Log
             </PrimaryButton>
-            <PrimaryButton variant="soft" onClick={() => void saveSessionLog()}>
-              Save Log
-            </PrimaryButton>
-          </div>
-        </div>
-        <div className="grid gap-4 md:grid-cols-[1.3fr_1fr]">
-          <div className="rounded-lg bg-neutral-950/60 p-4 ring-1 ring-white/10">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="text-xs font-extrabold text-slate-300">Command Entry</div>
-            </div>
-
-            <div className="mt-3 flex gap-3">
-              <input
-                value={command}
-                onChange={(e) => dispatch(setCommand(e.target.value))}
-                placeholder="Enter command…"
-                className="h-10 flex-1 rounded-lg bg-neutral-950/70 px-3 text-sm text-slate-100 ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-orange-400/40"
-              />
-              <PrimaryButton onClick={() => void sendSerialCommand()}>Send</PrimaryButton>
-              <PrimaryButton variant="soft" onClick={() => void readSerialData()}>
-                Read
+              <PrimaryButton variant="soft" onClick={() => void saveSessionLog()}>
+                Save Log
               </PrimaryButton>
             </div>
-
-            <div className="mt-4">
-              <div className="text-xs font-extrabold text-slate-300">Preset Commands</div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {["AT+PING", "READ 01", "RESET", "STATUS?", "START"].map((label) => (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() => dispatch(setCommand(label))}
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200 hover:bg-white/10"
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-3 text-xs text-slate-400">
-                Linux: /home/pi/logs/rs485.log • Windows: C:\\Logs\\rs485.log
-              </div>
-            </div>
           </div>
 
-          <div className="rounded-lg bg-neutral-950/60 p-4 ring-1 ring-white/10">
-            <div className="text-xs font-extrabold text-slate-300">Session Log</div>
-            <textarea
-              value={logText}
-              readOnly
-              placeholder="No session data."
-              className="mt-3 h-52 w-full resize-none rounded-lg bg-neutral-950 p-3 text-xs text-slate-300 ring-1 ring-white/10 focus:outline-none"
-            />
+          <div className="grid gap-4 md:grid-cols-[1.3fr_1fr]">
+            <div className="rounded-xl bg-neutral-950/60 p-5 ring-1 ring-white/10">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-slate-400">
+                    Command Entry
+                  </div>
+                  <div className="mt-1 text-xs text-slate-400">
+                    Send immediate commands or read the current buffer.
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
+                <input
+                  value={command}
+                  onChange={(e) => dispatch(setCommand(e.target.value))}
+                  placeholder="Enter command…"
+                  className="h-11 flex-1 rounded-lg bg-neutral-950/70 px-3 text-sm text-slate-100 ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-orange-400/40"
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <PrimaryButton onClick={() => void sendSerialCommand()}>
+                    Send
+                  </PrimaryButton>
+                  <PrimaryButton
+                    variant="soft"
+                    onClick={() => void readSerialData()}
+                  >
+                    Read
+                  </PrimaryButton>
+                </div>
+              </div>
+
+              <div className="mt-5">
+                <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-slate-400">
+                  Preset Commands
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {[
+                    "AT+PING",
+                    "READ 01",
+                    "READ 02",
+                    "READ 03",
+                    "WRITE 01 00",
+                    "WRITE 01 01",
+                    "STATUS?",
+                    "DIAG",
+                    "FLUSH",
+                    "RESET",
+                    "START",
+                    "STOP",
+                  ].map((label) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => dispatch(setCommand(label))}
+                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200 hover:bg-white/10"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3 text-xs text-slate-400">
+                  Linux: /home/pi/logs/rs485.log • Windows: C:\\Logs\\rs485.log
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-neutral-950/60 p-5 ring-1 ring-white/10">
+              <div>
+                <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-slate-400">
+                  Session Log
+                </div>
+                <div className="mt-1 text-xs text-slate-400">
+                  Latest activity stream for this device.
+                </div>
+              </div>
+              <textarea
+                value={logText}
+                readOnly
+                placeholder="No session data."
+                className="mt-4 h-60 w-full resize-none rounded-lg bg-neutral-950 p-3 text-xs text-slate-300 ring-1 ring-white/10 focus:outline-none font-mono"
+              />
+            </div>
           </div>
         </div>
       </Card>
@@ -881,6 +1241,9 @@ function DeviceManagement() {
 function DevicesPage() {
   const dispatch = useAppDispatch();
   const devices = useAppSelector((state) => state.devices.devices);
+  const selectedDeviceId = useAppSelector((state) => state.devices.selectedDeviceId);
+  const connState = useAppSelector((state) => state.runtime.connState);
+  const nextDeviceId = `DEV-${String(devices.length + 1).padStart(3, "0")}`;
 
   return (
     <PageShell
@@ -889,7 +1252,24 @@ function DevicesPage() {
       statusLeft={<Pill tone="neutral">Fleet</Pill>}
       right={
         <div className="flex items-center gap-3">
-          <PrimaryButton onClick={() => dispatch(addDevice())} variant="soft">
+          <PrimaryButton
+            onClick={() => {
+              dispatch(addDevice());
+              dispatch(
+                addEvent(
+                  buildEvent({
+                    deviceId: nextDeviceId,
+                    type: "Device",
+                    severity: "success",
+                    message: `Device added (${nextDeviceId}).`,
+                    source: "device",
+                  })
+                )
+              );
+            }}
+            variant="soft"
+            icon={<Plus className="h-4 w-4" />}
+          >
             Add Device
           </PrimaryButton>
         </div>
@@ -897,20 +1277,26 @@ function DevicesPage() {
     >
       <Card title="Registered Devices">
         <div className="grid gap-4 md:grid-cols-2">
-          {devices.map((device) => (
-            <div
-              key={device.id}
-              className="rounded-lg bg-neutral-950/60 p-5 ring-1 ring-white/10"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-bold text-slate-100">{device.name}</div>
-                  <div className="text-xs text-slate-400">{device.id}</div>
+          {devices.map((device) => {
+            const isSelected = device.id === selectedDeviceId;
+            const status =
+              isSelected && connState === "Connected" && device.configured
+                ? "Connected"
+                : "Disconnected";
+            return (
+              <div
+                key={device.id}
+                className="rounded-lg bg-neutral-950/60 p-5 ring-1 ring-white/10"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-bold text-slate-100">{device.name}</div>
+                    <div className="text-xs text-slate-400">{device.id}</div>
+                  </div>
+                  <Pill tone={status === "Connected" ? "success" : "danger"}>
+                    {status}
+                  </Pill>
                 </div>
-                <Pill tone={device.status === "Connected" ? "success" : "danger"}>
-                  {device.status}
-                </Pill>
-              </div>
 
               <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-slate-400">
                 <div>
@@ -930,6 +1316,7 @@ function DevicesPage() {
                     dispatch(setNav("config"));
                     dispatch(setDeviceView("config"));
                   }}
+                  icon={<Settings className="h-4 w-4" />}
                 >
                   Configure
                 </PrimaryButton>
@@ -940,23 +1327,152 @@ function DevicesPage() {
                     dispatch(setNav("config"));
                     dispatch(setDeviceView("management"));
                   }}
+                  icon={<Activity className="h-4 w-4" />}
                 >
                   Monitor
                 </PrimaryButton>
               </div>
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
       </Card>
     </PageShell>
   );
 }
 
-function EventsPlaceholder() {
+function EventsPage() {
+  const devices = useAppSelector((state) => state.devices.devices);
+  const events = useAppSelector((state) => state.events.items);
+  const [severityFilter, setSeverityFilter] = useState("All");
+  const [typeFilter, setTypeFilter] = useState("All");
+  const [deviceFilter, setDeviceFilter] = useState("All");
+  const [rangeFilter, setRangeFilter] = useState("24h");
+
+  const filteredEvents = useMemo(() => {
+    const now = Date.now();
+    return events.filter((evt) => {
+      if (severityFilter !== "All" && evt.severity !== severityFilter) return false;
+      if (typeFilter !== "All" && evt.type !== typeFilter) return false;
+      if (deviceFilter !== "All" && evt.deviceId !== deviceFilter) return false;
+      if (rangeFilter !== "All") {
+        const ts = new Date(evt.ts).getTime();
+        const delta = now - ts;
+        const limit =
+          rangeFilter === "1h"
+            ? 60 * 60 * 1000
+            : rangeFilter === "6h"
+              ? 6 * 60 * 60 * 1000
+              : rangeFilter === "24h"
+                ? 24 * 60 * 60 * 1000
+                : 7 * 24 * 60 * 60 * 1000;
+        if (delta > limit) return false;
+      }
+      return true;
+    });
+  }, [deviceFilter, events, rangeFilter, severityFilter, typeFilter]);
+
+  const stats = useMemo(() => {
+    const total = filteredEvents.length;
+    const errors = filteredEvents.filter((evt) => evt.severity === "error").length;
+    const warnings = filteredEvents.filter((evt) => evt.severity === "warning").length;
+    const commands = filteredEvents.filter((evt) => evt.type === "Command").length;
+    return { total, errors, warnings, commands };
+  }, [filteredEvents]);
+
+  const severityTone = (severity: EventSeverity): PillTone => {
+    if (severity === "error") return "danger";
+    if (severity === "warning") return "danger";
+    if (severity === "success") return "success";
+    return "neutral";
+  };
+
   return (
-    <PageShell pageTitle="Events" subtitle="Placeholder">
+    <PageShell pageTitle="Events" subtitle="Operational history and alerts">
+      <Card title="Overview">
+        <div className="grid gap-4 md:grid-cols-4">
+          <StatTile stat={{ label: "TOTAL EVENTS", value: stats.total }} />
+          <StatTile stat={{ label: "ERRORS", value: stats.errors, variant: "gradient" }} />
+          <StatTile stat={{ label: "WARNINGS", value: stats.warnings }} />
+          <StatTile stat={{ label: "COMMANDS", value: stats.commands, variant: "success" }} />
+        </div>
+      </Card>
+
       <Card>
-        <div className="text-sm text-slate-400">Events page placeholder.</div>
+        <div className="grid gap-2 lg:grid-cols-4 lg:items-end">
+          <Select
+            label="Severity"
+            value={severityFilter}
+            onChange={(value) => setSeverityFilter(value)}
+            options={["All", "info", "success", "warning", "error"]}
+            className="w-full"
+            stacked
+          />
+          <Select
+            label="Type"
+            value={typeFilter}
+            onChange={(value) => setTypeFilter(value)}
+            options={[
+              "All",
+              "Connection",
+              "Command",
+              "Serial",
+              "Config",
+              "Device",
+              "System",
+            ]}
+            className="w-full"
+            stacked
+          />
+          <Select
+            label="Device"
+            value={deviceFilter}
+            onChange={(value) => setDeviceFilter(value)}
+            options={["All", ...devices.map((device) => device.id)]}
+            className="w-full"
+            stacked
+          />
+          <Select
+            label="Range"
+            value={rangeFilter}
+            onChange={(value) => setRangeFilter(value)}
+            options={["1h", "6h", "24h", "7d", "All"]}
+            className="w-full"
+            stacked
+          />
+        </div>
+      </Card>
+
+      <Card title={`Events (${filteredEvents.length})`}>
+        <div className="space-y-3">
+          {filteredEvents.length === 0 ? (
+            <div className="text-sm text-slate-400">No events match the current filters.</div>
+          ) : (
+            filteredEvents.map((evt) => (
+              <div
+                key={evt.id}
+                className="rounded-lg bg-neutral-950/60 p-4 transition hover:bg-neutral-900/80"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Pill tone={severityTone(evt.severity)}>{evt.severity.toUpperCase()}</Pill>
+                    <span className="text-xs font-semibold text-slate-300">{evt.type}</span>
+                    <span className="text-xs text-slate-500">•</span>
+                    <span className="text-xs text-slate-400">
+                      {evt.deviceId ?? "System"}
+                    </span>
+                    <span className="text-xs text-slate-500">•</span>
+                    <span className="text-xs text-slate-400">
+                      {new Date(evt.ts).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-500">{evt.source}</div>
+                </div>
+                <div className="mt-2 text-sm text-slate-200">{evt.message}</div>
+              </div>
+            ))
+          )}
+        </div>
       </Card>
     </PageShell>
   );
@@ -977,7 +1493,7 @@ export default function Dashboard() {
       ) : nav === "dash" ? (
         <DevicesPage />
       ) : (
-        <EventsPlaceholder />
+        <EventsPage />
       )}
     </>
   );

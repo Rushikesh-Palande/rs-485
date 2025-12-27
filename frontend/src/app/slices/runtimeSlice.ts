@@ -8,7 +8,7 @@ type RuntimeState = {
   parsedData: string;
   errors: string;
   command: string;
-  logText: string;
+  logByDevice: Record<string, string>;
 };
 
 const initialState: RuntimeState = {
@@ -19,7 +19,7 @@ const initialState: RuntimeState = {
     "READ ok\nDevice: 01\nVoltage: 12.3 V\nCurrent: 1.04 A\nTemp: 36.8 C",
   errors: "Framing error (last 5 min: 2)",
   command: "READ 01",
-  logText: "",
+  logByDevice: {},
 };
 
 const runtimeSlice = createSlice({
@@ -48,14 +48,15 @@ const runtimeSlice = createSlice({
     setCommand(state, action: PayloadAction<string>) {
       state.command = action.payload;
     },
-    setLogText(state, action: PayloadAction<string>) {
-      state.logText = action.payload;
+    setLogText(state, action: PayloadAction<{ deviceId: string; text: string }>) {
+      state.logByDevice[action.payload.deviceId] = action.payload.text;
     },
-    appendLog(state, action: PayloadAction<string>) {
-      state.logText = `${state.logText}${action.payload}\n`;
+    appendLog(state, action: PayloadAction<{ deviceId: string; entry: string }>) {
+      const current = state.logByDevice[action.payload.deviceId] ?? "";
+      state.logByDevice[action.payload.deviceId] = `${current}${action.payload.entry}\n`;
     },
-    clearLog(state) {
-      state.logText = "";
+    clearLog(state, action: PayloadAction<string>) {
+      state.logByDevice[action.payload] = "";
     },
   },
 });

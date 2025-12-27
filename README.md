@@ -191,7 +191,28 @@ Select up to 6 numeric keys to overlay.
 
 ---
 
-## 7) CI/CD (GitHub Actions)
+## 7) Desktop Rust ⇄ Frontend bindings
+
+Key Tauri commands and where they are used in the React UI:
+
+- **Serial ports and I/O** (`desktop/src-tauri/src/serial.rs`)
+  - `list_serial_ports` → `frontend/src/pages/Dashboard.tsx` (Device Configuration: Detect ports)
+  - `open_serial_port` → `frontend/src/pages/Dashboard.tsx` (Device Configuration: Save, Device Monitor: Connect)
+  - `close_serial_port` → `frontend/src/pages/Dashboard.tsx` (Device Monitor: Disconnect)
+  - `write_serial_data` → `frontend/src/pages/Dashboard.tsx` (Device Monitor: Send)
+  - `read_serial_data` → `frontend/src/pages/Dashboard.tsx` (Device Monitor: Read)
+
+- **Session log saving** (`desktop/src-tauri/src/logs.rs`)
+  - `save_session_log` → `frontend/src/pages/Dashboard.tsx` (Device Monitor: Save Log)
+
+- **System info (About dialog)** (`desktop/src-tauri/src/system.rs`)
+  - Used in `desktop/src-tauri/src/main.rs` for the app menu About dialog (not called directly by React).
+
+All commands are registered in `desktop/src-tauri/src/main.rs` via `tauri::generate_handler![]` and invoked in the UI with `@tauri-apps/api/core` `invoke()`.
+
+---
+
+## 8) CI/CD (GitHub Actions)
 
 Included workflows:
 

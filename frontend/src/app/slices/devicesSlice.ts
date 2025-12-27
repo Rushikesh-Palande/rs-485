@@ -13,6 +13,7 @@ const initialDevices: Device[] = [
     status: "Disconnected",
     connection: "RS-485",
     lastSeen: "2 min ago",
+    configured: false,
   },
   {
     id: "DEV-002",
@@ -20,6 +21,7 @@ const initialDevices: Device[] = [
     status: "Connected",
     connection: "TTL",
     lastSeen: "Just now",
+    configured: false,
   },
 ];
 
@@ -47,8 +49,15 @@ const devicesSlice = createSlice({
         status: "Disconnected",
         connection: "RS-485",
         lastSeen: "Just now",
+        configured: false,
       });
       state.selectedDeviceId = id;
+    },
+    setDeviceConfigured(state, action: PayloadAction<{ id: string; configured: boolean }>) {
+      const target = state.devices.find((device) => device.id === action.payload.id);
+      if (target) {
+        target.configured = action.payload.configured;
+      }
     },
     removeDevice(state, action: PayloadAction<string>) {
       const id = action.payload;
@@ -63,6 +72,6 @@ const devicesSlice = createSlice({
   },
 });
 
-export const { setDevices, addDevice, removeDevice, setSelectedDeviceId } =
+export const { setDevices, addDevice, setDeviceConfigured, removeDevice, setSelectedDeviceId } =
   devicesSlice.actions;
 export default devicesSlice.reducer;
