@@ -1,5 +1,5 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
-import type { Device } from "../types";
+import type { Device } from "./types";
 
 type DevicesState = {
   devices: Device[];

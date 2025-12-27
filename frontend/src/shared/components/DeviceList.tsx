@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import type { DeviceSummary } from "../lib/types";
+import type { DeviceSummary } from "../types/telemetry";
 
 export function DeviceList(props: {
   devices: DeviceSummary[];

@@ -1,5 +1,5 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
-import type { NavKey } from "../types";
+import type { NavKey } from "./types";
 
 type UiState = {
   nav: NavKey;

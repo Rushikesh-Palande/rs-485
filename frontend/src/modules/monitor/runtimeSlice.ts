@@ -1,5 +1,5 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
-import type { ConnState } from "../types";
+import type { ConnState } from "../../shared/types/common";
 
 type RuntimeState = {
   connState: ConnState;

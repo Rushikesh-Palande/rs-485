@@ -1,5 +1,5 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
-import type { GraphMode } from "../types";
+import type { GraphMode } from "./types";
 
 type ManagementState = {
   graphMode: GraphMode;

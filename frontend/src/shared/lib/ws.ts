@@ -1,5 +1,5 @@
 import { CONFIG } from "./config";
-import type { TelemetryEvent } from "./types";
+import type { TelemetryEvent } from "../types/telemetry";
 
 type Status = { connected: boolean };
 

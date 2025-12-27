@@ -1,12 +1,12 @@
 import { configureStore, type Middleware } from "@reduxjs/toolkit";
-import uiReducer from "./slices/uiSlice";
-import devicesReducer from "./slices/devicesSlice";
-import configReducer from "./slices/configSlice";
-import runtimeReducer from "./slices/runtimeSlice";
-import managementReducer from "./slices/managementSlice";
-import eventsReducer from "./slices/eventsSlice";
-import { addEvent, clearEvents, setEvents } from "./slices/eventsSlice";
-import { loadEventsFromDb, saveEventsToDb } from "../lib/eventsDb";
+import uiReducer from "../modules/ui/uiSlice";
+import devicesReducer from "../modules/devices/devicesSlice";
+import configReducer from "../modules/config/configSlice";
+import runtimeReducer from "../modules/monitor/runtimeSlice";
+import managementReducer from "../modules/management/managementSlice";
+import eventsReducer from "../modules/events/eventsSlice";
+import { addEvent, clearEvents, setEvents } from "../modules/events/eventsSlice";
+import { loadEventsFromDb, saveEventsToDb } from "../shared/lib/eventsDb";
 
 const eventsPersistence: Middleware = (storeApi) => (next) => (action) => {
   const result = next(action);

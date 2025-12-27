@@ -1,5 +1,5 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
-import type { AppEvent } from "../types";
+import type { AppEvent } from "./types";
 
 type EventsState = {
   items: AppEvent[];

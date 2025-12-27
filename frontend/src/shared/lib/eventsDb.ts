@@ -1,5 +1,5 @@
 import { get, set } from "idb-keyval";
-import type { AppEvent } from "../app/types";
+import type { AppEvent } from "../../modules/events/types";
 
 const EVENTS_KEY = "rs485.events.v1";
 const MAX_AGE_MS = 6 * 60 * 60 * 1000;

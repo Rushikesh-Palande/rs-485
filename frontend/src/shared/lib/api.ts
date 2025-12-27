@@ -1,5 +1,5 @@
 import { CONFIG } from "./config";
-import type { TelemetryHistoryPoint } from "./types";
+import type { TelemetryHistoryPoint } from "../types/telemetry";
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${CONFIG.API_BASE}${path}`;

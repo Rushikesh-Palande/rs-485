@@ -1,5 +1,5 @@
 import { get, set, del } from "idb-keyval";
-import type { TelemetryEvent } from "./types";
+import type { TelemetryEvent } from "../types/telemetry";
 import { isTauri } from "./tauri";
 
 const KEY = "rs485:recording:v1";
