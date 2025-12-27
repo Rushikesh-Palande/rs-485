@@ -3,7 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../../app/hooks";
 import { addEvent } from "../../events/eventsSlice";
 import { buildEvent } from "../../events/utils";
-import { setNav } from "../../ui/uiSlice";
+import { useNavigate } from "react-router-dom";
 import { Card } from "../../../shared/components/Card";
 import { Pill } from "../../../shared/components/Pill";
 import { PrimaryButton } from "../../../shared/components/PrimaryButton";
@@ -14,6 +14,7 @@ import type { ConnState, Stat } from "../../../shared/types/common";
 
 export function DeviceMonitor() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const { selectedDeviceId, devices } = useAppSelector((state) => state.devices);
   const { connState, ready, command } = useAppSelector((state) => state.runtime);
   const device = devices.find((item) => item.id === selectedDeviceId) ?? null;
@@ -395,7 +396,7 @@ export function DeviceMonitor() {
         <PrimaryButton
           variant="soft"
           icon={<ArrowLeft className="h-4 w-4" />}
-          onClick={() => dispatch(setNav("dash"))}
+          onClick={() => navigate("/devices")}
         >
           Back to Devices
         </PrimaryButton>
@@ -440,7 +441,7 @@ export function DeviceMonitor() {
             </div>
           </div>
           <div className="grid gap-4 md:grid-cols-[1.3fr_1fr]">
-            <div className="rounded-xl bg-neutral-950/60 p-5">
+            <div className="rounded-xl bg-neutral-950/60 p-5 ring-1 ring-white/10">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-slate-400">
@@ -510,7 +511,7 @@ export function DeviceMonitor() {
               </div>
             </div>
 
-            <div className="rounded-xl bg-neutral-950/60 p-5">
+            <div className="rounded-xl bg-neutral-950/60 p-5 ring-1 ring-white/10">
               <div>
                 <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-slate-400">
                   Session Log

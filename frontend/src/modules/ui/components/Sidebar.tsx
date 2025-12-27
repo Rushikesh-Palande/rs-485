@@ -1,5 +1,6 @@
 import React from "react";
 import { LayoutDashboard, Bell } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "../../../app/hooks";
 import { setNav } from "../uiSlice";
 import { cn } from "../../../shared/utils/cn";
@@ -7,6 +8,7 @@ import { IconButton } from "./IconButton";
 
 export function Sidebar() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const nav = useAppSelector((state) => state.ui.nav);
   const sidebarOpen = useAppSelector((state) => state.ui.sidebarOpen);
   return (
@@ -25,14 +27,20 @@ export function Sidebar() {
         <div className={cn("flex flex-1 flex-col gap-3", sidebarOpen ? "items-stretch" : "items-center")}>
           <IconButton
             active={nav === "dash"}
-            onClick={() => dispatch(setNav("dash"))}
+            onClick={() => {
+              dispatch(setNav("dash"));
+              navigate("/devices");
+            }}
             label="DEVICES"
             icon={<LayoutDashboard className="h-5 w-5" />}
             showLabel={sidebarOpen}
           />
           <IconButton
             active={nav === "events"}
-            onClick={() => dispatch(setNav("events"))}
+            onClick={() => {
+              dispatch(setNav("events"));
+              navigate("/events");
+            }}
             label="EVENTS"
             icon={<Bell className="h-5 w-5" />}
             showLabel={sidebarOpen}

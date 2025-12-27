@@ -4,7 +4,7 @@ import { useAppDispatch, useAppSelector } from "../../../app/hooks";
 import { addEvent } from "../../events/eventsSlice";
 import { buildEvent } from "../../events/utils";
 import { removeDevice, setDeviceConfigured } from "../../devices/devicesSlice";
-import { setNav } from "../../ui/uiSlice";
+import { useNavigate } from "react-router-dom";
 import {
   setBaud,
   setFrameFormat,
@@ -25,6 +25,7 @@ import { cn } from "../../../shared/utils/cn";
 
 export function DeviceConfiguration() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const { selectedDeviceId, devices } = useAppSelector((state) => state.devices);
   const device = devices.find((item) => item.id === selectedDeviceId) ?? null;
   const { connState, rawData, parsedData, errors } = useAppSelector((state) => state.runtime);
@@ -160,7 +161,7 @@ export function DeviceConfiguration() {
         <PrimaryButton
           variant="soft"
           icon={<ArrowLeft className="h-4 w-4" />}
-          onClick={() => dispatch(setNav("dash"))}
+          onClick={() => navigate("/devices")}
         >
           Back to Devices
         </PrimaryButton>
@@ -354,7 +355,7 @@ export function DeviceConfiguration() {
                   })
                 )
               );
-              dispatch(setNav("dash"));
+              navigate("/devices");
             }}
           >
             Remove Device

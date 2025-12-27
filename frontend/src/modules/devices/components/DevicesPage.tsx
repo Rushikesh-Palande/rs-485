@@ -3,8 +3,8 @@ import { Activity, Plus, Settings } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../../app/hooks";
 import { addEvent } from "../../events/eventsSlice";
 import { buildEvent } from "../../events/utils";
+import { useNavigate } from "react-router-dom";
 import { addDevice, setSelectedDeviceId } from "../devicesSlice";
-import { setDeviceView, setNav } from "../../ui/uiSlice";
 import { Card } from "../../../shared/components/Card";
 import { Pill } from "../../../shared/components/Pill";
 import { PrimaryButton } from "../../../shared/components/PrimaryButton";
@@ -12,6 +12,7 @@ import { PageShell } from "../../ui/components/PageShell";
 
 export function DevicesPage() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const devices = useAppSelector((state) => state.devices.devices);
   const selectedDeviceId = useAppSelector((state) => state.devices.selectedDeviceId);
   const connState = useAppSelector((state) => state.runtime.connState);
@@ -93,8 +94,7 @@ export function DevicesPage() {
                   <PrimaryButton
                     onClick={() => {
                       dispatch(setSelectedDeviceId(device.id));
-                      dispatch(setNav("config"));
-                      dispatch(setDeviceView("config"));
+                      navigate(`/devices/${device.id}/config`);
                     }}
                     icon={<Settings className="h-4 w-4" />}
                   >
@@ -104,8 +104,7 @@ export function DevicesPage() {
                     variant="soft"
                     onClick={() => {
                       dispatch(setSelectedDeviceId(device.id));
-                      dispatch(setNav("config"));
-                      dispatch(setDeviceView("management"));
+                      navigate(`/devices/${device.id}/monitor`);
                     }}
                     icon={<Activity className="h-4 w-4" />}
                   >
