@@ -47,6 +47,20 @@ A hardened `.gitignore` is included.
 
 ---
 
+## 1.1) WSL USB port binding (Windows + WSL2)
+
+If you are using a USB RS-485 adapter from Windows and want it inside WSL2, run these in **PowerShell (Admin)**:
+
+```powershell
+usbipd list
+usbipd bind --busid 1-1
+usbipd attach --wsl --busid 1-1
+```
+
+Replace `1-1` with the busid from `usbipd list`.
+
+---
+
 ## 2) Quick start (Backend)
 
 ```bash
@@ -131,6 +145,16 @@ VITE_API_BASE=http://127.0.0.1:8000
 
 ---
 
+## 4.1) Frontend module layout (current)
+
+- `frontend/src/modules/` holds feature modules: `devices`, `config`, `monitor`, `events`, `ui`.
+- `frontend/src/shared/` holds shared UI primitives, utilities, and data helpers.
+- Device-specific routes are:
+  - `/devices/:deviceId/config`
+  - `/devices/:deviceId/monitor`
+
+---
+
 ## 5) Quick start (Desktop Tauri)
 
 ### Development
@@ -196,14 +220,14 @@ Select up to 6 numeric keys to overlay.
 Key Tauri commands and where they are used in the React UI:
 
 - **Serial ports and I/O** (`desktop/src-tauri/src/serial.rs`)
-  - `list_serial_ports` → `frontend/src/pages/Dashboard.tsx` (Device Configuration: Detect ports)
-  - `open_serial_port` → `frontend/src/pages/Dashboard.tsx` (Device Configuration: Save, Device Monitor: Connect)
-  - `close_serial_port` → `frontend/src/pages/Dashboard.tsx` (Device Monitor: Disconnect)
-  - `write_serial_data` → `frontend/src/pages/Dashboard.tsx` (Device Monitor: Send)
-  - `read_serial_data` → `frontend/src/pages/Dashboard.tsx` (Device Monitor: Read)
+  - `list_serial_ports` → `frontend/src/modules/config/components/DeviceConfiguration.tsx` (Detect ports)
+  - `open_serial_port` → `frontend/src/modules/config/components/DeviceConfiguration.tsx` (Save), `frontend/src/modules/monitor/components/DeviceMonitor.tsx` (Connect)
+  - `close_serial_port` → `frontend/src/modules/monitor/components/DeviceMonitor.tsx` (Disconnect)
+  - `write_serial_data` → `frontend/src/modules/monitor/components/DeviceMonitor.tsx` (Send)
+  - `read_serial_data` → `frontend/src/modules/monitor/components/DeviceMonitor.tsx` (Read)
 
 - **Session log saving** (`desktop/src-tauri/src/logs.rs`)
-  - `save_session_log` → `frontend/src/pages/Dashboard.tsx` (Device Monitor: Save Log)
+  - `save_session_log` → `frontend/src/modules/monitor/components/DeviceMonitor.tsx` (Save Log)
 
 - **System info (About dialog)** (`desktop/src-tauri/src/system.rs`)
   - Used in `desktop/src-tauri/src/main.rs` for the app menu About dialog (not called directly by React).
