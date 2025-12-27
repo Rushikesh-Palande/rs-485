@@ -4,6 +4,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod backend;
+mod logs;
 mod menu;
 mod serial;
 mod system;
@@ -25,6 +26,7 @@ use crate::serial::{
   SerialState,
 };
 use crate::system::system_info_string;
+use crate::logs::save_session_log;
 
 fn main() {
   tauri::Builder::default()
@@ -33,7 +35,8 @@ fn main() {
       open_serial_port,
       close_serial_port,
       write_serial_data,
-      read_serial_data
+      read_serial_data,
+      save_session_log
     ])
     .plugin(tauri_plugin_shell::init())
     .plugin(tauri_plugin_dialog::init())

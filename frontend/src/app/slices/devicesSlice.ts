@@ -50,12 +50,19 @@ const devicesSlice = createSlice({
       });
       state.selectedDeviceId = id;
     },
+    removeDevice(state, action: PayloadAction<string>) {
+      const id = action.payload;
+      state.devices = state.devices.filter((device) => device.id !== id);
+      if (state.selectedDeviceId === id) {
+        state.selectedDeviceId = state.devices[0]?.id ?? null;
+      }
+    },
     setSelectedDeviceId(state, action: PayloadAction<string | null>) {
       state.selectedDeviceId = action.payload;
     },
   },
 });
 
-export const { setDevices, addDevice, setSelectedDeviceId } =
+export const { setDevices, addDevice, removeDevice, setSelectedDeviceId } =
   devicesSlice.actions;
 export default devicesSlice.reducer;

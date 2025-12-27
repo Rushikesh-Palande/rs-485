@@ -11,7 +11,7 @@ import {
 import { useAppDispatch, useAppSelector } from "../app/hooks";
 import type { PillTone, Stat } from "../app/types";
 import { setNav, setDeviceView, toggleSidebar } from "../app/slices/uiSlice";
-import { addDevice, setSelectedDeviceId } from "../app/slices/devicesSlice";
+import { addDevice, removeDevice, setSelectedDeviceId } from "../app/slices/devicesSlice";
 import {
   setBaud,
   setFrameFormat,
@@ -140,12 +140,14 @@ function PrimaryButton({
   onClick,
   variant = "solid",
   icon,
+  className,
 }: {
   children: React.ReactNode;
   disabled?: boolean;
   onClick?: () => void;
   variant?: "solid" | "soft";
   icon?: React.ReactNode;
+  className?: string;
 }) {
   const base =
     "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-orange-400/50";
@@ -164,7 +166,8 @@ function PrimaryButton({
         base,
         styles,
         disabled &&
-          "cursor-not-allowed opacity-60 shadow-none hover:brightness-100"
+          "cursor-not-allowed opacity-60 shadow-none hover:brightness-100",
+        className
       )}
     >
       {icon}
@@ -312,7 +315,7 @@ function Sidebar() {
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 h-screen bg-neutral-900 transition-[width] duration-200",
+        "fixed left-0 top-0 h-screen border-r border-white/10 bg-neutral-900 transition-[width] duration-200",
         sidebarOpen ? "w-[220px]" : "w-[72px]"
       )}
     >
@@ -322,10 +325,6 @@ function Sidebar() {
           sidebarOpen ? "items-stretch px-2" : "items-center"
         )}
       >
-        <div className="mb-6 flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-white shadow-[0_14px_34px_rgba(0,0,0,0.35)]">
-          <span className="text-xs font-black tracking-widest">UI</span>
-        </div>
-
         <div className={cn("flex flex-1 flex-col gap-3", sidebarOpen ? "items-stretch" : "items-center")}>
           <IconButton
             active={nav === "dash"}
@@ -448,6 +447,15 @@ function DeviceConfiguration() {
       subtitle={device ? `Device: ${device.name} (${device.id})` : "No device selected"}
       statusLeft={<Pill tone={connState === "Disconnected" ? "danger" : "success"}>{connState}</Pill>}
       statusRight={<Pill tone="neutral">Ready</Pill>}
+      right={
+        <PrimaryButton
+          variant="soft"
+          icon={<ArrowLeft className="h-4 w-4" />}
+          onClick={() => dispatch(setNav("dash"))}
+        >
+          Back to Devices
+        </PrimaryButton>
+      }
     >
       <Card
         title="Communication Parameters"
@@ -615,6 +623,25 @@ function DeviceConfiguration() {
         </div>
       </Card>
 
+      <Card title="Device Actions">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-xs text-slate-400">
+            Remove this device from the list. This does not delete backend data.
+          </div>
+          <PrimaryButton
+            variant="soft"
+            disabled={!device}
+            className="hover:bg-rose-500/20 hover:text-rose-200"
+            onClick={() => {
+              if (!device) return;
+              dispatch(removeDevice(device.id));
+              dispatch(setNav("dash"));
+            }}
+          >
+            Remove Device
+          </PrimaryButton>
+        </div>
+      </Card>
     </PageShell>
   );
 }
@@ -660,6 +687,26 @@ function DeviceManagement() {
       dispatch(setConnState("Connected"));
     } catch {
       dispatch(setConnState("Disconnected"));
+    }
+  };
+
+  const saveSessionLog = async () => {
+    if (!logText.trim()) {
+      dispatch(appendLog("[Save] No log data to write"));
+      return;
+    }
+
+    const { isTauri, invoke } = await import("@tauri-apps/api/core");
+    if (!isTauri()) {
+      dispatch(appendLog("[Error] Log saving requires the desktop app."));
+      return;
+    }
+
+    try {
+      const path = await invoke<string>("save_session_log", { contents: logText });
+      dispatch(appendLog(`[Save OK] ${path}`));
+    } catch (error) {
+      dispatch(appendLog(`[Error] Save failed: ${String(error)}`));
     }
   };
 
@@ -742,7 +789,7 @@ function DeviceManagement() {
         <PrimaryButton
           variant="soft"
           icon={<ArrowLeft className="h-4 w-4" />}
-          onClick={() => dispatch(setDeviceView("config"))}
+          onClick={() => dispatch(setNav("dash"))}
         >
           Back to Devices
         </PrimaryButton>
@@ -762,19 +809,24 @@ function DeviceManagement() {
       </Card>
 
       <Card title="Commands & Controls">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs font-extrabold text-slate-300">Session Controls</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <PrimaryButton onClick={() => void toggleConnection()}>
+              {connState === "Connected" ? "Disconnect" : "Connect"}
+            </PrimaryButton>
+            <PrimaryButton variant="soft" onClick={() => dispatch(clearLog())}>
+              Clear Log
+            </PrimaryButton>
+            <PrimaryButton variant="soft" onClick={() => void saveSessionLog()}>
+              Save Log
+            </PrimaryButton>
+          </div>
+        </div>
         <div className="grid gap-4 md:grid-cols-[1.3fr_1fr]">
           <div className="rounded-lg bg-neutral-950/60 p-4 ring-1 ring-white/10">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="text-xs font-extrabold text-slate-300">Command Entry</div>
-              <div className="flex flex-wrap items-center gap-2">
-                <PrimaryButton onClick={() => void toggleConnection()}>
-                  {connState === "Connected" ? "Disconnect" : "Connect"}
-                </PrimaryButton>
-                <PrimaryButton variant="soft" onClick={() => dispatch(clearLog())}>
-                  Clear Log
-                </PrimaryButton>
-                <PrimaryButton variant="soft">Save Log</PrimaryButton>
-              </div>
             </div>
 
             <div className="mt-3 flex gap-3">

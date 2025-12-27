@@ -18,7 +18,7 @@ function AppShell(props: { children: React.ReactNode }) {
             : "sm:ml-[72px] sm:w-[calc(100%-72px)]"
         }`}
       >
-        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-3 px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex w-full flex-wrap items-center gap-3 px-4 py-3 sm:px-6 sm:py-4">
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
@@ -47,7 +47,7 @@ function AppShell(props: { children: React.ReactNode }) {
       </div>
 
       {/* Page content */}
-      <div className="mx-auto max-w-[1400px] px-6 py-6">{props.children}</div>
+      <div className="w-full px-6 py-6">{props.children}</div>
 
     </div>
   );
