@@ -276,74 +276,6 @@ export function DeviceMonitor() {
     }
   };
 
-  const saveSessionLog = async () => {
-    if (!logText.trim()) {
-      dispatch(appendLog({ deviceId: logDeviceId, entry: "[Save] No log data to write" }));
-      dispatch(
-        addEvent(
-          buildEvent({
-            deviceId: logDeviceId,
-            type: "System",
-            severity: "info",
-            message: "Save log skipped: no data.",
-            source: "system",
-          })
-        )
-      );
-      return;
-    }
-
-    const { isTauri, invoke } = await import("@tauri-apps/api/core");
-    if (!isTauri()) {
-      dispatch(
-        appendLog({ deviceId: logDeviceId, entry: "[Error] Log saving requires the desktop app." })
-      );
-      dispatch(
-        addEvent(
-          buildEvent({
-            deviceId: logDeviceId,
-            type: "System",
-            severity: "error",
-            message: "Log save failed: desktop app required.",
-            source: "system",
-          })
-        )
-      );
-      return;
-    }
-
-    try {
-      const path = await invoke<string>("save_session_log", { contents: logText });
-      dispatch(appendLog({ deviceId: logDeviceId, entry: `[Save OK] ${path}` }));
-      dispatch(
-        addEvent(
-          buildEvent({
-            deviceId: logDeviceId,
-            type: "System",
-            severity: "success",
-            message: `Session log saved to ${path}`,
-            source: "system",
-          })
-        )
-      );
-    } catch (error) {
-      dispatch(
-        appendLog({ deviceId: logDeviceId, entry: `[Error] Save failed: ${String(error)}` })
-      );
-      dispatch(
-        addEvent(
-          buildEvent({
-            deviceId: logDeviceId,
-            type: "System",
-            severity: "error",
-            message: `Session log save failed: ${String(error)}`,
-            source: "system",
-          })
-        )
-      );
-    }
-  };
-
   const sendSerialCommand = async () => {
     if (!deviceConfigured) {
       dispatch(
@@ -546,6 +478,16 @@ export function DeviceMonitor() {
   }, [logDeviceId, logText]);
 
   useEffect(() => {
+    const key = `session-log-clear:${logDeviceId}`;
+    const handler = (event: StorageEvent) => {
+      if (event.key !== key) return;
+      dispatch(clearLog(logDeviceId));
+    };
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
+  }, [dispatch, logDeviceId]);
+
+  useEffect(() => {
     if (!isConnected || !deviceConfigured) {
       return undefined;
     }
@@ -689,12 +631,6 @@ export function DeviceMonitor() {
                   {isConnected ? "Disconnect" : "Connect"}
                 </PrimaryButton>
               ) : null}
-              <PrimaryButton variant="soft" onClick={() => dispatch(clearLog(logDeviceId))}>
-                Clear Log
-              </PrimaryButton>
-              <PrimaryButton variant="soft" onClick={() => void saveSessionLog()}>
-                Save Log
-              </PrimaryButton>
             </div>
           </div>
           <div
