@@ -129,7 +129,14 @@ jobs:
 
       - name: Install Linux deps (Tauri cross)
         run: |
-          sudo sed -i 's/^Architectures: .*/Architectures: amd64/' /etc/apt/sources.list.d/ubuntu.sources
+          if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+            sudo sed -i 's/^Architectures: .*/Architectures: amd64/' /etc/apt/sources.list.d/ubuntu.sources
+          fi
+          if [ -f /etc/apt/sources.list ]; then
+            sudo sed -i 's|^deb http://security.ubuntu.com/ubuntu|deb [arch=amd64] http://security.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+            sudo sed -i 's|^deb http://archive.ubuntu.com/ubuntu|deb [arch=amd64] http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+            sudo sed -i 's|^deb http://azure.archive.ubuntu.com/ubuntu|deb [arch=amd64] http://azure.archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+          fi
           sudo tee /etc/apt/sources.list.d/arm64.sources >/dev/null <<'EOF'
           Types: deb
           URIs: http://ports.ubuntu.com/ubuntu-ports
