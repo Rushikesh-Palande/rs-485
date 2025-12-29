@@ -3,7 +3,7 @@ import { ChevronDown, RefreshCw, ArrowLeft } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../../app/hooks";
 import { addEvent } from "../../events/eventsSlice";
 import { buildEvent } from "../../events/utils";
-import { removeDevice, setDeviceConfigured } from "../../devices/devicesSlice";
+import { removeDevice, setDeviceConfigured, setSelectedDeviceId } from "../../devices/devicesSlice";
 import { useNavigate } from "react-router-dom";
 import {
   setBaud,
@@ -15,20 +15,23 @@ import {
   setStopBits,
   setWriteTimeout,
 } from "../configSlice";
-import { setConnState } from "../../monitor/runtimeSlice";
+import { setConnectedDeviceId } from "../../monitor/runtimeSlice";
 import { Card } from "../../../shared/components/Card";
 import { Pill } from "../../../shared/components/Pill";
 import { PrimaryButton } from "../../../shared/components/PrimaryButton";
 import { Select } from "../../../shared/components/Select";
 import { PageShell } from "../../ui/components/PageShell";
 import { cn } from "../../../shared/utils/cn";
+import type { ConnState } from "../../../shared/types/common";
 
 export function DeviceConfiguration() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const { selectedDeviceId, devices } = useAppSelector((state) => state.devices);
   const device = devices.find((item) => item.id === selectedDeviceId) ?? null;
-  const { connState, rawData, parsedData, errors } = useAppSelector((state) => state.runtime);
+  const { connectedDeviceId } = useAppSelector((state) => state.runtime);
+  const displayConnState: ConnState =
+    device && device.configured && connectedDeviceId === device.id ? "Connected" : "Disconnected";
   const {
     port,
     baud,
@@ -91,7 +94,7 @@ export function DeviceConfiguration() {
           writeTimeoutMs: Number.parseInt(writeTimeout, 10),
         },
       });
-      dispatch(setConnState("Connected"));
+      dispatch(setConnectedDeviceId(device?.id ?? null));
       if (device) {
         dispatch(setDeviceConfigured({ id: device.id, configured: true }));
       }
@@ -111,7 +114,7 @@ export function DeviceConfiguration() {
         message: `Saved: ${status.port} @${status.baud} (${status.parity}, ${status.stopBits}, ${status.dataBits}b)`,
       });
     } catch {
-      dispatch(setConnState("Disconnected"));
+      dispatch(setConnectedDeviceId(null));
       dispatch(
         addEvent(
           buildEvent({
@@ -155,7 +158,11 @@ export function DeviceConfiguration() {
     <PageShell
       pageTitle="Device Configuration"
       subtitle={device ? `Device: ${device.name} (${device.id})` : "No device selected"}
-      statusLeft={<Pill tone={connState === "Disconnected" ? "danger" : "success"}>{connState}</Pill>}
+      statusLeft={
+        <Pill tone={displayConnState === "Disconnected" ? "danger" : "success"}>
+          {displayConnState}
+        </Pill>
+      }
       statusRight={<Pill tone="neutral">Ready</Pill>}
       right={
         <PrimaryButton
@@ -220,12 +227,20 @@ export function DeviceConfiguration() {
                     <button
                       type="button"
                       onClick={() => detectPorts(port)}
-                      className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-semibold text-slate-200 hover:bg-white/10"
+                      className={cn(
+                        "h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-semibold text-slate-200 transition hover:bg-white/10",
+                        isDetecting && "animate-pulse"
+                      )}
                       disabled={isDetecting}
                       title={isDetecting ? "Detecting ports" : "Detect ports"}
                       aria-label="Detect ports"
                     >
-                      <RefreshCw className={cn("h-4 w-4", isDetecting && "animate-spin")} />
+                      <RefreshCw
+                        className={cn(
+                          "h-4 w-4 transition-transform duration-300",
+                          isDetecting && "animate-spin"
+                        )}
+                      />
                     </button>
                   </div>
                 </label>
@@ -305,30 +320,24 @@ export function DeviceConfiguration() {
       </Card>
 
       <Card title="Status Strip">
-        <div className="flex flex-wrap items-center gap-3">
-          <Pill tone={connState === "Disconnected" ? "danger" : "success"}>{connState}</Pill>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
           <Pill tone="neutral">{port}</Pill>
           <Pill tone="neutral">{baud} bps</Pill>
           <Pill tone="neutral">Parity: {parity}</Pill>
           <Pill tone="neutral">Stop: {stopBits}</Pill>
-          <Pill tone={errors === "None" ? "neutral" : "danger"}>{errors}</Pill>
-        </div>
-      </Card>
-
-      <Card title="Status & Live Data">
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <div className="rounded-lg bg-neutral-950/60 p-4 ring-1 ring-white/10">
-            <div className="text-xs font-extrabold text-slate-300">RAW RECEIVED</div>
-            <div className="mt-3 min-h-[120px] rounded-lg bg-neutral-950 p-3 text-xs text-slate-300 ring-1 ring-white/10">
-              {rawData}
-            </div>
           </div>
-          <div className="rounded-lg bg-neutral-950/60 p-4 ring-1 ring-white/10">
-            <div className="text-xs font-extrabold text-slate-300">PARSED DATA</div>
-            <div className="mt-3 min-h-[120px] rounded-lg bg-neutral-950 p-3 text-xs text-slate-300 ring-1 ring-white/10">
-              {parsedData}
-            </div>
-          </div>
+          <PrimaryButton
+            variant="soft"
+            className="bg-emerald-500/20 text-emerald-100 hover:bg-emerald-500/30"
+            onClick={() => {
+              if (!device) return;
+              dispatch(setSelectedDeviceId(device.id));
+              navigate(`/devices/${device.id}/monitor`);
+            }}
+          >
+            Monitor
+          </PrimaryButton>
         </div>
       </Card>
 

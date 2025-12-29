@@ -1,13 +1,29 @@
 {
   "identifier": "default",
   "description": "Default capability set for RS-485 Command Center",
-  "windows": ["main"],
+  "local": true,
+  "windows": ["*"],
+  "remote": {
+    "urls": [
+      "http://localhost:5173/**",
+      "http://127.0.0.1:5173/**"
+    ]
+  },
   "permissions": [
     "core:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
     "shell:allow-spawn",
     "shell:allow-kill",
     "shell:allow-open",
     "dialog:default",
-    "fs:default"
+    "fs:default",
+    "core:window:allow-create",
+    "core:window:allow-get-all-windows",
+    "core:window:allow-show",
+    "core:window:allow-close",
+    "core:window:allow-set-focus",
+    "core:webview:allow-create-webview-window",
+    "core:webview:allow-webview-close"
   ]
 }

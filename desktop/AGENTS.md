@@ -2,14 +2,14 @@
 
 ## Project Structure & Module Organization
 - `src-tauri/` contains the Tauri (Rust) desktop shell, configuration, and backend launcher.
-- `src-tauri/src/main.rs` is the entry point that spawns the `rs485-backend` sidecar, wires the tray/menu, and manages lifecycle.
+- `src-tauri/src/main.rs` is the entry point; it wires modules in `src-tauri/src/` (`backend/`, `logs.rs`, `menu.rs`, `serial.rs`, `system.rs`).
 - `src-tauri/capabilities/` holds Tauri capability configuration.
 - `src-tauri/target/` is build output (do not edit or commit).
 - The Tauri config expects a web frontend in `../frontend` (sibling directory) with build output in `../frontend/dist`.
 
 ## Build, Test, and Development Commands
-- `npm run dev` (from this repo): starts the Tauri app in dev mode. It will run `pnpm --dir ../frontend dev` per `src-tauri/tauri.conf.json`.
-- `npm run build`: builds the Tauri app for distribution; runs `pnpm --dir ../frontend build` first and bundles `src-tauri/bin/rs485-backend`.
+- `npm run dev` (from this repo): starts the Tauri app in dev mode. It will run `npm --prefix ../frontend run dev` per `src-tauri/tauri.conf.json`.
+- `npm run build`: builds the Tauri app for distribution; runs `npm --prefix ../frontend run build` first and bundles `src-tauri/bin/rs485-backend`.
 - `cargo build` (from `src-tauri/`): builds the Rust shell only; useful for backend-only checks.
 
 ## Coding Style & Naming Conventions
