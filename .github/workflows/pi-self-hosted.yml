@@ -1,4 +1,4 @@
-name: Pi Build (self-hosted)
+name: Pi Build (self-hosted, Debian 12 aarch64)
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   desktop_pi:
-    name: Desktop build (Pi aarch64)
+    name: Desktop build (Pi Debian 12 aarch64)
     runs-on: [self-hosted, linux, arm64, rpi]
     steps:
       - uses: actions/checkout@v4
@@ -49,3 +49,11 @@ jobs:
       - name: Build desktop (Pi)
         working-directory: desktop
         run: npm run build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rs485-desktop-pi-aarch64
+          path: |
+            desktop/src-tauri/target/release/rs485_command_center*
+            desktop/src-tauri/target/release/bundle/**
