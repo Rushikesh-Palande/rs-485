@@ -102,8 +102,9 @@ fn main() {
       if let tauri::WindowEvent::CloseRequested { api, .. } = event {
         let label = window.label();
         if label == "main" {
-          for (label, child) in window.app_handle().webview_windows() {
-            if label != "main" && label.starts_with("session-log-") {
+          for (_, child) in window.app_handle().webview_windows() {
+            let child_label = child.label();
+            if child_label != "main" && child_label.starts_with("session-log-") {
               let _ = child.close();
             }
           }

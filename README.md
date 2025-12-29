@@ -61,6 +61,122 @@ Replace `1-1` with the busid from `usbipd list`.
 
 ---
 
+## 1.2) Desktop prerequisites by OS (Tauri)
+
+### Windows
+- Rust toolchain (MSVC)
+- Visual Studio Build Tools (C++ workload)
+- WebView2 runtime (usually preinstalled on Windows 10/11)
+
+### macOS
+- Xcode Command Line Tools: `xcode-select --install`
+
+### Linux (Ubuntu/Debian)
+```bash
+sudo apt update
+sudo apt install -y \
+  libwebkit2gtk-4.1-dev \
+  libgtk-3-dev \
+  libayatana-appindicator3-dev \
+  librsvg2-dev \
+  pkg-config \
+  libssl-dev
+```
+
+### Linux (Fedora)
+```bash
+sudo dnf install -y \
+  webkit2gtk4.1-devel \
+  gtk3-devel \
+  libappindicator-gtk3-devel \
+  librsvg2-devel \
+  openssl-devel \
+  pkgconf
+```
+
+### Linux (Arch)
+```bash
+sudo pacman -S --needed \
+  webkit2gtk \
+  gtk3 \
+  libayatana-appindicator \
+  librsvg \
+  openssl \
+  pkgconf
+```
+
+> WSL2 note: Tauri GUI windows require WSLg. If WSLg is not working, run the desktop app on Windows host instead.
+
+---
+
+## 1.3) Raspberry Pi 4 (Debian 12, aarch64)
+
+Recommended (most reliable):
+- Run backend + frontend on the Pi.
+- Access the UI from another machine via a browser.
+
+Desktop app on Pi (optional):
+
+```bash
+sudo apt update
+sudo apt install -y \
+  libwebkit2gtk-4.1-dev \
+  libgtk-3-dev \
+  libayatana-appindicator3-dev \
+  librsvg2-dev \
+  pkg-config \
+  libssl-dev
+```
+
+Build steps:
+
+```bash
+cd frontend
+npm ci
+npm run build
+
+cd ../desktop
+npm ci
+npm run build
+```
+
+Notes:
+- Tauri builds are slower on Pi.
+- Add your user to the `dialout` group for serial access: `sudo usermod -aG dialout $USER`
+
+---
+
+## 1.4) Cross-compile desktop for Raspberry Pi (aarch64)
+
+Install the Rust target and cross toolchain on your dev machine:
+
+```bash
+rustup target add aarch64-unknown-linux-gnu
+
+sudo dpkg --add-architecture arm64
+sudo apt update
+sudo apt install -y \
+  gcc-aarch64-linux-gnu \
+  pkg-config \
+  libwebkit2gtk-4.1-dev:arm64 \
+  libgtk-3-dev:arm64 \
+  libayatana-appindicator3-dev:arm64 \
+  librsvg2-dev:arm64 \
+  libssl-dev:arm64
+```
+
+Build:
+
+```bash
+cd desktop
+PKG_CONFIG_ALLOW_CROSS=1 \
+PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/lib/pkgconfig \
+CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+npm run build -- --target aarch64-unknown-linux-gnu
+```
+
+---
+
 ## 2) Quick start (Backend)
 
 ```bash
@@ -158,7 +274,8 @@ VITE_API_BASE=http://127.0.0.1:8000
 ## 5) Quick start (Desktop Tauri)
 
 ### Development
-Run backend separately, then:
+The desktop app runs an embedded Rust REST/WS server on `127.0.0.1:8000`.
+Set `DATABASE_URL` if you want history endpoints to work.
 
 ```bash
 cd desktop
@@ -166,25 +283,8 @@ npm ci
 npm run dev
 ```
 
-### Production build (bundled backend sidecar)
-For production builds, Tauri expects a bundled backend executable:
-
-- `desktop/src-tauri/bin/rs485-backend`
-
-You build it from Python using PyInstaller and copy it there (Windows example):
-
-```bash
-cd backend
-uv run pyinstaller -F -n rs485-backend -p src -m uvicorn rs485_app.main:app -- --host 127.0.0.1 --port 8000
-# output: dist/rs485-backend.exe
-```
-
-Then copy to:
-
-- `desktop/src-tauri/bin/rs485-backend.exe` (Windows)
-- `desktop/src-tauri/bin/rs485-backend` (Linux/macOS)
-
-Now build desktop:
+### Production build
+Build the desktop app:
 
 ```bash
 cd desktop

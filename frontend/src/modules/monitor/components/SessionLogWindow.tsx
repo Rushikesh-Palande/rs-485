@@ -18,6 +18,48 @@ export function SessionLogWindow() {
   }, [storageKey]);
 
   useEffect(() => {
+    const key = `session-log-open:${deviceId}`;
+    try {
+      localStorage.setItem(key, String(Date.now()));
+    } catch {
+      // Ignore storage errors.
+    }
+    const onUnload = () => {
+      try {
+        localStorage.setItem(`session-log-closed:${deviceId}`, String(Date.now()));
+      } catch {
+        // Ignore storage errors.
+      }
+    };
+    window.addEventListener("beforeunload", onUnload);
+    return () => window.removeEventListener("beforeunload", onUnload);
+  }, [deviceId]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    void (async () => {
+      try {
+        const { isTauri } = await import("@tauri-apps/api/core");
+        if (!isTauri()) return;
+        const { getCurrentWebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+        const win = getCurrentWebviewWindow();
+        unlisten = await win.onCloseRequested(() => {
+          try {
+            localStorage.setItem(`session-log-closed:${deviceId}`, String(Date.now()));
+          } catch {
+            // Ignore storage errors.
+          }
+        });
+      } catch {
+        // Ignore event binding failures.
+      }
+    })();
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [deviceId]);
+
+  useEffect(() => {
     const handler = (event: StorageEvent) => {
       if (event.key !== storageKey) return;
       setLogText(event.newValue ?? "");

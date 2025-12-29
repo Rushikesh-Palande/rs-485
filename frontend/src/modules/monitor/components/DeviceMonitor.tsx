@@ -488,6 +488,16 @@ export function DeviceMonitor() {
   }, [dispatch, logDeviceId]);
 
   useEffect(() => {
+    const key = `session-log-closed:${logDeviceId}`;
+    const handler = (event: StorageEvent) => {
+      if (event.key !== key) return;
+      setShowLogWindow(false);
+    };
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
+  }, [logDeviceId]);
+
+  useEffect(() => {
     if (!isConnected || !deviceConfigured) {
       return undefined;
     }
