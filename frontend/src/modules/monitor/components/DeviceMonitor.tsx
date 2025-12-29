@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef } from "react";
-import { ArrowLeft } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, Maximize2 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../../app/hooks";
 import { addEvent } from "../../events/eventsSlice";
 import { buildEvent } from "../../events/utils";
@@ -185,6 +185,7 @@ export function DeviceMonitor() {
   const displayConnState: ConnState = isConnected ? "Connected" : "Disconnected";
   const pollRef = useRef(false);
   const statsRef = useRef(telemetryStats);
+  const [showLogWindow, setShowLogWindow] = useState(false);
 
   const toggleConnection = async () => {
     const { isTauri, invoke } = await import("@tauri-apps/api/core");
@@ -536,6 +537,15 @@ export function DeviceMonitor() {
   }, [telemetryStats]);
 
   useEffect(() => {
+    if (!logDeviceId) return;
+    try {
+      localStorage.setItem(`session-log:${logDeviceId}`, logText);
+    } catch {
+      // Ignore storage errors (private mode, quota, etc.).
+    }
+  }, [logDeviceId, logText]);
+
+  useEffect(() => {
     if (!isConnected || !deviceConfigured) {
       return undefined;
     }
@@ -566,6 +576,22 @@ export function DeviceMonitor() {
       window.clearInterval(intervalId);
     };
   }, [dispatch, deviceConfigured, frameFormat, isConnected]);
+
+  useEffect(() => {
+    return () => {
+      if (!showLogWindow) return;
+      const label = `session-log-${logDeviceId}`;
+      void (async () => {
+        const { isTauri } = await import("@tauri-apps/api/core");
+        if (!isTauri()) return;
+        const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+        const existing = await WebviewWindow.getByLabel(label);
+        if (existing) {
+          await existing.close();
+        }
+      })();
+    };
+  }, [logDeviceId, showLogWindow]);
 
   const stats = useMemo<Stat[]>(
     () => {
@@ -650,6 +676,14 @@ export function DeviceMonitor() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {device ? (
+                <PrimaryButton
+                  variant="soft"
+                  onClick={() => navigate(`/devices/${device.id}/config`)}
+                >
+                  Configure
+                </PrimaryButton>
+              ) : null}
               {deviceConfigured ? (
                 <PrimaryButton onClick={() => void toggleConnection()}>
                   {isConnected ? "Disconnect" : "Connect"}
@@ -663,7 +697,11 @@ export function DeviceMonitor() {
               </PrimaryButton>
             </div>
           </div>
-          <div className="grid gap-4 md:grid-cols-[1.3fr_1fr]">
+          <div
+            className={`grid gap-4 ${
+              showLogWindow ? "md:grid-cols-1" : "md:grid-cols-[2.1fr_1fr]"
+            }`}
+          >
             <div className="rounded-xl bg-neutral-950/60 p-5 ring-1 ring-white/10">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -734,22 +772,80 @@ export function DeviceMonitor() {
               </div>
             </div>
 
-            <div className="rounded-xl bg-neutral-950/60 p-5 ring-1 ring-white/10">
-              <div>
-                <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-slate-400">
-                  Session Log
+            {!showLogWindow ? (
+              <div className="rounded-xl bg-neutral-950/60 p-5 ring-1 ring-white/10">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-slate-400">
+                      Session Log
+                    </div>
+                    <div className="mt-1 text-xs text-slate-400">
+                      Latest activity stream for this device.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 text-xs font-semibold text-slate-300 hover:text-slate-100"
+                    onClick={async () => {
+                      try {
+                        const { isTauri } = await import("@tauri-apps/api/core");
+                        if (!isTauri()) return;
+                        const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+                        const label = `session-log-${logDeviceId}`;
+                        const existing = await WebviewWindow.getByLabel(label);
+                        if (existing) {
+                          await existing.show();
+                          await existing.setFocus();
+                          setShowLogWindow(true);
+                          return;
+                        }
+                        const win = new WebviewWindow(label, {
+                          url: `/session-log?deviceId=${encodeURIComponent(logDeviceId)}`,
+                          title: `Session Log (${logDeviceId})`,
+                          width: 900,
+                          height: 700,
+                          resizable: true,
+                        });
+                        win.once("tauri://created", async () => {
+                          setShowLogWindow(true);
+                          try {
+                            await win.show();
+                            await win.setFocus();
+                          } catch {
+                            // Ignore focus errors.
+                          }
+                        });
+                        win.once("tauri://error", () => {
+                          setShowLogWindow(false);
+                        });
+                        win.onCloseRequested(() => {
+                          setShowLogWindow(false);
+                        });
+                        setTimeout(async () => {
+                          try {
+                            const verify = await WebviewWindow.getByLabel(label);
+                            if (!verify) {
+                              setShowLogWindow(false);
+                            }
+                          } catch {
+                            setShowLogWindow(false);
+                          }
+                        }, 300);
+                      } catch {}
+                    }}
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                    Expand
+                  </button>
                 </div>
-                <div className="mt-1 text-xs text-slate-400">
-                  Latest activity stream for this device.
-                </div>
+                <textarea
+                  value={logText}
+                  readOnly
+                  placeholder="No session data."
+                  className="mt-4 h-60 w-full resize-none rounded-lg bg-neutral-950 p-3 text-xs text-slate-300 focus:outline-none font-mono"
+                />
               </div>
-              <textarea
-                value={logText}
-                readOnly
-                placeholder="No session data."
-                className="mt-4 h-60 w-full resize-none rounded-lg bg-neutral-950 p-3 text-xs text-slate-300 focus:outline-none font-mono"
-              />
-            </div>
+            ) : null}
           </div>
         </div>
       </Card>

@@ -98,12 +98,18 @@ fn main() {
         _ => {}
       }
     })
-    .on_window_event(|app, event| {
+    .on_window_event(|window, event| {
       if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-        // Hide instead of close (enterprise UX: app stays in tray)
-        api.prevent_close();
-        if let Some(w) = app.get_webview_window("main") {
-          let _ = w.hide();
+        let label = window.label();
+        if label == "main" {
+          for (label, child) in window.app_handle().webview_windows() {
+            if label != "main" && label.starts_with("session-log-") {
+              let _ = child.close();
+            }
+          }
+          // Hide instead of close (enterprise UX: app stays in tray)
+          api.prevent_close();
+          let _ = window.hide();
         }
       }
     })

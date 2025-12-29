@@ -4,6 +4,7 @@ import { useAppDispatch, useAppSelector } from "../app/hooks";
 import { DeviceConfiguration } from "../modules/config/components/DeviceConfiguration";
 import { DevicesPage } from "../modules/devices/components/DevicesPage";
 import { DeviceMonitor } from "../modules/monitor/components/DeviceMonitor";
+import { SessionLogWindow } from "../modules/monitor/components/SessionLogWindow";
 import { EventsPage } from "../modules/events/components/EventsPage";
 import { setSelectedDeviceId } from "../modules/devices/devicesSlice";
 import { setDeviceView, setNav } from "../modules/ui/uiSlice";
@@ -60,4 +61,8 @@ export function DeviceMonitorRoute() {
     dispatch(setDeviceView("management"));
   }, [dispatch]);
   return <DeviceMonitor />;
+}
+
+export function SessionLogRoute() {
+  return <SessionLogWindow />;
 }
