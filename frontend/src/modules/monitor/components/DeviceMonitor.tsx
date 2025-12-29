@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Maximize2 } from "lucide-react";
+import React, { useMemo } from "react";
+import { ArrowLeft } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../../app/hooks";
 import { addEvent } from "../../events/eventsSlice";
 import { buildEvent } from "../../events/utils";
@@ -9,170 +9,14 @@ import { Pill } from "../../../shared/components/Pill";
 import { PrimaryButton } from "../../../shared/components/PrimaryButton";
 import { StatTile } from "../../../shared/components/StatTile";
 import { PageShell } from "../../ui/components/PageShell";
-import {
-  appendLog,
-  clearLog,
-  setCommand,
-  setConnectedDeviceId,
-  setTelemetryStats,
-} from "../runtimeSlice";
+import { appendLog, clearLog, setCommand, setConnState, toggleConnState } from "../runtimeSlice";
 import type { ConnState, Stat } from "../../../shared/types/common";
-
-type TelemetryStats = {
-  ch1Tx: number;
-  ch1Rx: number;
-  ch2Tx: number;
-  ch2Rx: number;
-  totalTx: number;
-  totalRx: number;
-  ok: number;
-  err: number;
-  txFps: number;
-  rxFps: number;
-};
-
-type SerialPayload = { len: number; text: string; hex: string };
-
-const TELEMETRY_PREFIX = "@TLM";
-
-const KEY_MAP: Record<string, keyof TelemetryStats> = {
-  ch1_tx: "ch1Tx",
-  ch1_rx: "ch1Rx",
-  ch2_tx: "ch2Tx",
-  ch2_rx: "ch2Rx",
-  total_tx: "totalTx",
-  total_rx: "totalRx",
-  ok: "ok",
-  err: "err",
-  tx_fps: "txFps",
-  rx_fps: "rxFps",
-};
-
-const MODBUS_REGISTER_KEYS: (keyof TelemetryStats)[] = [
-  "ch1Tx",
-  "ch1Rx",
-  "ch2Tx",
-  "ch2Rx",
-  "totalTx",
-  "totalRx",
-  "ok",
-  "err",
-  "txFps",
-  "rxFps",
-];
-
-function parseAsciiTelemetry(text: string): Partial<TelemetryStats> | null {
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  let line: string | undefined;
-  for (let i = lines.length - 1; i >= 0; i -= 1) {
-    if (lines[i].includes(TELEMETRY_PREFIX)) {
-      line = lines[i];
-      break;
-    }
-  }
-  if (!line) {
-    line = lines[lines.length - 1];
-  }
-  if (!line) return null;
-
-  const payload = line.includes(TELEMETRY_PREFIX)
-    ? line.slice(line.indexOf(TELEMETRY_PREFIX) + TELEMETRY_PREFIX.length)
-    : line;
-  const parts = payload.split("|").filter(Boolean);
-  const stats: Partial<TelemetryStats> = {};
-  for (const part of parts) {
-    const [rawKey, rawValue] = part.split("=");
-    if (!rawKey || rawValue === undefined) continue;
-    const key = rawKey.trim().toLowerCase();
-    const value = Number.parseFloat(rawValue.trim());
-    if (!Number.isFinite(value)) continue;
-    const mapped = KEY_MAP[key];
-    if (mapped) stats[mapped] = value;
-  }
-  return Object.keys(stats).length > 0 ? stats : null;
-}
-
-function parseHexBytes(hex: string): number[] {
-  return hex
-    .trim()
-    .split(/[\s,]+/)
-    .filter(Boolean)
-    .map((chunk) => Number.parseInt(chunk, 16))
-    .filter((value) => Number.isFinite(value));
-}
-
-function parseDecimalBytes(text: string): number[] {
-  return text
-    .trim()
-    .split(/[^0-9]+/)
-    .filter(Boolean)
-    .map((chunk) => Number.parseInt(chunk, 10))
-    .filter((value) => Number.isFinite(value));
-}
-
-function bytesToAscii(bytes: number[]): string {
-  return bytes.map((byte) => String.fromCharCode(byte)).join("");
-}
-
-function parseModbusTelemetry(bytes: number[]): Partial<TelemetryStats> | null {
-  if (bytes.length < 5) return null;
-  const byteCount = bytes[2];
-  if (byteCount <= 0 || bytes.length < 3 + byteCount) return null;
-  const data = bytes.slice(3, 3 + byteCount);
-  const registers: number[] = [];
-  for (let i = 0; i + 1 < data.length; i += 2) {
-    registers.push((data[i] << 8) | data[i + 1]);
-  }
-  if (registers.length < MODBUS_REGISTER_KEYS.length) return null;
-  const stats: Partial<TelemetryStats> = {};
-  MODBUS_REGISTER_KEYS.forEach((key, idx) => {
-    const raw = registers[idx];
-    if (key === "txFps" || key === "rxFps") {
-      stats[key] = raw / 100;
-    } else {
-      stats[key] = raw;
-    }
-  });
-  return stats;
-}
-
-function parseTelemetry(frameFormat: string, payload: SerialPayload): Partial<TelemetryStats> | null {
-  if (!payload.len) return null;
-  if (frameFormat === "Modbus RTU") {
-    return parseModbusTelemetry(parseHexBytes(payload.hex));
-  }
-  if (frameFormat === "Hex") {
-    const ascii = bytesToAscii(parseHexBytes(payload.hex));
-    return parseAsciiTelemetry(ascii);
-  }
-  if (frameFormat === "Decimal") {
-    const ascii = bytesToAscii(parseDecimalBytes(payload.text));
-    return parseAsciiTelemetry(ascii);
-  }
-  return parseAsciiTelemetry(payload.text);
-}
-
-function normalizeStats(
-  current: TelemetryStats,
-  incoming: Partial<TelemetryStats>
-): Partial<TelemetryStats> {
-  const next: TelemetryStats = { ...current, ...incoming };
-  if (!incoming.totalTx && (incoming.ch1Tx || incoming.ch2Tx)) {
-    next.totalTx = (incoming.ch1Tx ?? current.ch1Tx) + (incoming.ch2Tx ?? current.ch2Tx);
-  }
-  if (!incoming.totalRx && (incoming.ch1Rx || incoming.ch2Rx)) {
-    next.totalRx = (incoming.ch1Rx ?? current.ch1Rx) + (incoming.ch2Rx ?? current.ch2Rx);
-  }
-  return next;
-}
 
 export function DeviceMonitor() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const { selectedDeviceId, devices } = useAppSelector((state) => state.devices);
-  const { ready, command, connectedDeviceId, telemetryStats } = useAppSelector(
-    (state) => state.runtime
-  );
+  const { connState, ready, command } = useAppSelector((state) => state.runtime);
   const device = devices.find((item) => item.id === selectedDeviceId) ?? null;
   const logDeviceId = selectedDeviceId ?? "unassigned";
   const deviceConfigured = device?.configured ?? false;
@@ -181,16 +25,12 @@ export function DeviceMonitor() {
   );
   const { port, baud, parity, stopBits, dataBits, readTimeout, writeTimeout, frameFormat } =
     useAppSelector((state) => state.config);
-  const isConnected = deviceConfigured && connectedDeviceId === logDeviceId;
-  const displayConnState: ConnState = isConnected ? "Connected" : "Disconnected";
-  const pollRef = useRef(false);
-  const statsRef = useRef(telemetryStats);
-  const [showLogWindow, setShowLogWindow] = useState(false);
+  const displayConnState: ConnState = deviceConfigured ? connState : "Disconnected";
 
   const toggleConnection = async () => {
     const { isTauri, invoke } = await import("@tauri-apps/api/core");
     if (!isTauri()) {
-      dispatch(setConnectedDeviceId(isConnected ? null : logDeviceId));
+      dispatch(toggleConnState());
       dispatch(
         addEvent(
           buildEvent({
@@ -205,7 +45,7 @@ export function DeviceMonitor() {
       return;
     }
 
-    if (isConnected) {
+    if (connState === "Connected") {
       try {
         await invoke("close_serial_port");
         dispatch(
@@ -222,21 +62,12 @@ export function DeviceMonitor() {
       } catch {
         // Ignore close errors and reflect UI state.
       } finally {
-        dispatch(setConnectedDeviceId(null));
+        dispatch(setConnState("Disconnected"));
       }
       return;
     }
 
     try {
-      if (connectedDeviceId && connectedDeviceId !== logDeviceId) {
-        try {
-          await invoke("close_serial_port");
-        } catch {
-          // Ignore close errors, we'll attempt to open the new port anyway.
-        } finally {
-          dispatch(setConnectedDeviceId(null));
-        }
-      }
       await invoke("open_serial_port", {
         config: {
           port,
@@ -248,7 +79,7 @@ export function DeviceMonitor() {
           writeTimeoutMs: Number.parseInt(writeTimeout, 10),
         },
       });
-      dispatch(setConnectedDeviceId(logDeviceId));
+      dispatch(setConnState("Connected"));
       dispatch(
         addEvent(
           buildEvent({
@@ -261,7 +92,7 @@ export function DeviceMonitor() {
         )
       );
     } catch {
-      dispatch(setConnectedDeviceId(null));
+      dispatch(setConnState("Disconnected"));
       dispatch(
         addEvent(
           buildEvent({
@@ -270,6 +101,74 @@ export function DeviceMonitor() {
             severity: "error",
             message: "Failed to open serial port.",
             source: "serial",
+          })
+        )
+      );
+    }
+  };
+
+  const saveSessionLog = async () => {
+    if (!logText.trim()) {
+      dispatch(appendLog({ deviceId: logDeviceId, entry: "[Save] No log data to write" }));
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: logDeviceId,
+            type: "System",
+            severity: "info",
+            message: "Save log skipped: no data.",
+            source: "system",
+          })
+        )
+      );
+      return;
+    }
+
+    const { isTauri, invoke } = await import("@tauri-apps/api/core");
+    if (!isTauri()) {
+      dispatch(
+        appendLog({ deviceId: logDeviceId, entry: "[Error] Log saving requires the desktop app." })
+      );
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: logDeviceId,
+            type: "System",
+            severity: "error",
+            message: "Log save failed: desktop app required.",
+            source: "system",
+          })
+        )
+      );
+      return;
+    }
+
+    try {
+      const path = await invoke<string>("save_session_log", { contents: logText });
+      dispatch(appendLog({ deviceId: logDeviceId, entry: `[Save OK] ${path}` }));
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: logDeviceId,
+            type: "System",
+            severity: "success",
+            message: `Session log saved to ${path}`,
+            source: "system",
+          })
+        )
+      );
+    } catch (error) {
+      dispatch(
+        appendLog({ deviceId: logDeviceId, entry: `[Error] Save failed: ${String(error)}` })
+      );
+      dispatch(
+        addEvent(
+          buildEvent({
+            deviceId: logDeviceId,
+            type: "System",
+            severity: "error",
+            message: `Session log save failed: ${String(error)}`,
+            source: "system",
           })
         )
       );
@@ -429,10 +328,6 @@ export function DeviceMonitor() {
         return;
       }
       const line = frameFormat === "Hex" ? payload.hex : payload.text;
-      const parsed = parseTelemetry(frameFormat, payload);
-      if (parsed) {
-        dispatch(setTelemetryStats(normalizeStats(telemetryStats, parsed)));
-      }
       dispatch(appendLog({ deviceId: logDeviceId, entry: `[Read OK] ${payload.len} bytes` }));
       dispatch(appendLog({ deviceId: logDeviceId, entry: `[Read] ${line}` }));
       dispatch(
@@ -464,116 +359,20 @@ export function DeviceMonitor() {
     }
   };
 
-  useEffect(() => {
-    statsRef.current = telemetryStats;
-  }, [telemetryStats]);
-
-  useEffect(() => {
-    if (!logDeviceId) return;
-    try {
-      localStorage.setItem(`session-log:${logDeviceId}`, logText);
-    } catch {
-      // Ignore storage errors (private mode, quota, etc.).
-    }
-  }, [logDeviceId, logText]);
-
-  useEffect(() => {
-    const key = `session-log-clear:${logDeviceId}`;
-    const handler = (event: StorageEvent) => {
-      if (event.key !== key) return;
-      dispatch(clearLog(logDeviceId));
-    };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
-  }, [dispatch, logDeviceId]);
-
-  useEffect(() => {
-    const key = `session-log-closed:${logDeviceId}`;
-    const handler = (event: StorageEvent) => {
-      if (event.key !== key) return;
-      setShowLogWindow(false);
-    };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
-  }, [logDeviceId]);
-
-  useEffect(() => {
-    if (!isConnected || !deviceConfigured) {
-      return undefined;
-    }
-    let cancelled = false;
-    pollRef.current = false;
-
-    const intervalId = window.setInterval(async () => {
-      if (cancelled || pollRef.current) return;
-      pollRef.current = true;
-      try {
-        const { isTauri, invoke } = await import("@tauri-apps/api/core");
-        if (!isTauri()) return;
-        const payload = await invoke<SerialPayload>("read_serial_data", { maxBytes: 1024 });
-        if (!payload.len) return;
-        const parsed = parseTelemetry(frameFormat, payload);
-        if (parsed) {
-          dispatch(setTelemetryStats(normalizeStats(statsRef.current, parsed)));
-        }
-      } catch {
-        // Ignore background read failures to avoid spamming UI.
-      } finally {
-        pollRef.current = false;
-      }
-    }, 500);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
-  }, [dispatch, deviceConfigured, frameFormat, isConnected]);
-
-  useEffect(() => {
-    return () => {
-      if (!showLogWindow) return;
-      const label = `session-log-${logDeviceId}`;
-      void (async () => {
-        const { isTauri } = await import("@tauri-apps/api/core");
-        if (!isTauri()) return;
-        const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-        const existing = await WebviewWindow.getByLabel(label);
-        if (existing) {
-          await existing.close();
-        }
-      })();
-    };
-  }, [logDeviceId, showLogWindow]);
-
   const stats = useMemo<Stat[]>(
-    () => {
-      const ok = telemetryStats.ok;
-      const err = telemetryStats.err;
-      const successRate = ok + err > 0 ? (ok / (ok + err)) * 100 : 0;
-      return [
-        { label: "CHANNEL 1 TX", value: telemetryStats.ch1Tx, unit: "frames" },
-        { label: "CHANNEL 1 RX", value: telemetryStats.ch1Rx, unit: "frames" },
-        { label: "CHANNEL 2 TX", value: telemetryStats.ch2Tx, unit: "frames" },
-        { label: "CHANNEL 2 RX", value: telemetryStats.ch2Rx, unit: "frames" },
-        { label: "TOTAL SENT", value: telemetryStats.totalTx, unit: "frames", variant: "gradient" },
-        {
-          label: "TOTAL RECEIVED",
-          value: telemetryStats.totalRx,
-          unit: "frames",
-          variant: "gradient",
-        },
-        {
-          label: "SUCCESS RATE",
-          value: successRate.toFixed(2),
-          unit: "%",
-          variant: "success",
-        },
-        { label: "ERRORS", value: telemetryStats.err, unit: "frames" },
-        { label: "TX SPEED", value: telemetryStats.txFps, unit: "fps", variant: "gradient" },
-        { label: "RX SPEED", value: telemetryStats.rxFps, unit: "fps", variant: "gradient" },
-      ];
-    },
-    [telemetryStats]
+    () => [
+      { label: "CHANNEL 1 TX", value: 0, unit: "frames" },
+      { label: "CHANNEL 1 RX", value: 0, unit: "frames" },
+      { label: "CHANNEL 2 TX", value: 0, unit: "frames" },
+      { label: "CHANNEL 2 RX", value: 0, unit: "frames" },
+      { label: "TOTAL SENT", value: 0, unit: "frames", variant: "gradient" },
+      { label: "TOTAL RECEIVED", value: 0, unit: "frames", variant: "gradient" },
+      { label: "SUCCESS RATE", value: "0.00", unit: "%", variant: "success" },
+      { label: "ERRORS", value: 0, unit: "frames" },
+      { label: "TX SPEED", value: 0, unit: "fps", variant: "gradient" },
+      { label: "RX SPEED", value: 0, unit: "fps", variant: "gradient" },
+    ],
+    []
   );
 
   return (
@@ -628,26 +427,20 @@ export function DeviceMonitor() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {device ? (
-                <PrimaryButton
-                  variant="soft"
-                  onClick={() => navigate(`/devices/${device.id}/config`)}
-                >
-                  Configure
-                </PrimaryButton>
-              ) : null}
               {deviceConfigured ? (
                 <PrimaryButton onClick={() => void toggleConnection()}>
-                  {isConnected ? "Disconnect" : "Connect"}
+                  {connState === "Connected" ? "Disconnect" : "Connect"}
                 </PrimaryButton>
               ) : null}
+              <PrimaryButton variant="soft" onClick={() => dispatch(clearLog(logDeviceId))}>
+                Clear Log
+              </PrimaryButton>
+              <PrimaryButton variant="soft" onClick={() => void saveSessionLog()}>
+                Save Log
+              </PrimaryButton>
             </div>
           </div>
-          <div
-            className={`grid gap-4 ${
-              showLogWindow ? "md:grid-cols-1" : "md:grid-cols-[2.1fr_1fr]"
-            }`}
-          >
+          <div className="grid gap-4 md:grid-cols-[1.3fr_1fr]">
             <div className="rounded-xl bg-neutral-950/60 p-5 ring-1 ring-white/10">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -681,34 +474,34 @@ export function DeviceMonitor() {
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {[
-                    {
-                      label: "ASCII: @TLM sample",
-                      value:
-                        "@TLM|ch1_tx=12|ch1_rx=10|ch2_tx=8|ch2_rx=9|total_tx=20|total_rx=19|ok=19|err=1|tx_fps=5.2|rx_fps=4.8",
-                    },
-                    {
-                      label: "HEX: @TLM sample",
-                      value:
-                        "40 54 4C 4D 7C 63 68 31 5F 74 78 3D 31 32 7C 63 68 31 5F 72 78 3D 31 30 7C 63 68 32 5F 74 78 3D 38 7C 63 68 32 5F 72 78 3D 39 7C 74 6F 74 61 6C 5F 74 78 3D 32 30 7C 74 6F 74 61 6C 5F 72 78 3D 31 39 7C 6F 6B 3D 31 39 7C 65 72 72 3D 31 7C 74 78 5F 66 70 73 3D 35 2E 32 7C 72 78 5F 66 70 73 3D 34 2E 38",
-                    },
-                    {
-                      label: "DECIMAL: @TLM sample",
-                      value:
-                        "64 84 76 77 124 99 104 49 95 116 120 61 49 50 124 99 104 49 95 114 120 61 49 48 124 99 104 50 95 116 120 61 56 124 99 104 50 95 114 120 61 57 124 116 111 116 97 108 95 116 120 61 50 48 124 116 111 116 97 108 95 114 120 61 49 57 124 111 107 61 49 57 124 101 114 114 61 49 124 116 120 95 102 112 115 61 53 46 50 124 114 120 95 102 112 115 61 52 46 56",
-                    },
-                    {
-                      label: "MODBUS RTU: sample registers",
-                      value:
-                        "01 03 14 00 0C 00 0A 00 08 00 09 00 14 00 13 00 13 00 01 02 08 01 E0",
-                    },
-                  ].map((preset) => (
+                    "AT+PING",
+                    "READ 01",
+                    "READ 02",
+                    "READ 03",
+                    "READ 04",
+                    "READ 05",
+                    "WRITE 01 00",
+                    "WRITE 01 01",
+                    "WRITE 02 00",
+                    "WRITE 02 01",
+                    "SCAN",
+                    "INFO",
+                    "STATUS?",
+                    "DIAG",
+                    "FLUSH",
+                    "RESET",
+                    "START",
+                    "STOP",
+                    "SLEEP",
+                    "WAKE",
+                  ].map((label) => (
                     <button
-                      key={preset.label}
+                      key={label}
                       type="button"
-                      onClick={() => dispatch(setCommand(preset.value))}
+                      onClick={() => dispatch(setCommand(label))}
                       className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200 hover:bg-white/10"
                     >
-                      {preset.label}
+                      {label}
                     </button>
                   ))}
                 </div>
@@ -718,80 +511,22 @@ export function DeviceMonitor() {
               </div>
             </div>
 
-            {!showLogWindow ? (
-              <div className="rounded-xl bg-neutral-950/60 p-5 ring-1 ring-white/10">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-slate-400">
-                      Session Log
-                    </div>
-                    <div className="mt-1 text-xs text-slate-400">
-                      Latest activity stream for this device.
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="flex items-center gap-2 text-xs font-semibold text-slate-300 hover:text-slate-100"
-                    onClick={async () => {
-                      try {
-                        const { isTauri } = await import("@tauri-apps/api/core");
-                        if (!isTauri()) return;
-                        const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-                        const label = `session-log-${logDeviceId}`;
-                        const existing = await WebviewWindow.getByLabel(label);
-                        if (existing) {
-                          await existing.show();
-                          await existing.setFocus();
-                          setShowLogWindow(true);
-                          return;
-                        }
-                        const win = new WebviewWindow(label, {
-                          url: `/session-log?deviceId=${encodeURIComponent(logDeviceId)}`,
-                          title: `Session Log (${logDeviceId})`,
-                          width: 900,
-                          height: 700,
-                          resizable: true,
-                        });
-                        win.once("tauri://created", async () => {
-                          setShowLogWindow(true);
-                          try {
-                            await win.show();
-                            await win.setFocus();
-                          } catch {
-                            // Ignore focus errors.
-                          }
-                        });
-                        win.once("tauri://error", () => {
-                          setShowLogWindow(false);
-                        });
-                        win.onCloseRequested(() => {
-                          setShowLogWindow(false);
-                        });
-                        setTimeout(async () => {
-                          try {
-                            const verify = await WebviewWindow.getByLabel(label);
-                            if (!verify) {
-                              setShowLogWindow(false);
-                            }
-                          } catch {
-                            setShowLogWindow(false);
-                          }
-                        }, 300);
-                      } catch {}
-                    }}
-                  >
-                    <Maximize2 className="h-4 w-4" />
-                    Expand
-                  </button>
+            <div className="rounded-xl bg-neutral-950/60 p-5 ring-1 ring-white/10">
+              <div>
+                <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-slate-400">
+                  Session Log
                 </div>
-                <textarea
-                  value={logText}
-                  readOnly
-                  placeholder="No session data."
-                  className="mt-4 h-60 w-full resize-none rounded-lg bg-neutral-950 p-3 text-xs text-slate-300 focus:outline-none font-mono"
-                />
+                <div className="mt-1 text-xs text-slate-400">
+                  Latest activity stream for this device.
+                </div>
               </div>
-            ) : null}
+              <textarea
+                value={logText}
+                readOnly
+                placeholder="No session data."
+                className="mt-4 h-60 w-full resize-none rounded-lg bg-neutral-950 p-3 text-xs text-slate-300 focus:outline-none font-mono"
+              />
+            </div>
           </div>
         </div>
       </Card>

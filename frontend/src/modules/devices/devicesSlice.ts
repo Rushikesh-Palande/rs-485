@@ -1,5 +1,5 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
-import type { ConnectionType, Device } from "./types";
+import type { Device } from "./types";
 
 type DevicesState = {
   devices: Device[];
@@ -40,15 +40,14 @@ const devicesSlice = createSlice({
         state.selectedDeviceId = state.devices[0].id;
       }
     },
-    addDevice(state, action: PayloadAction<{ connection?: ConnectionType } | undefined>) {
+    addDevice(state) {
       const nextIndex = state.devices.length + 1;
       const id = `DEV-${String(nextIndex).padStart(3, "0")}`;
-      const connection = action.payload?.connection ?? "RS-485";
       state.devices.push({
         id,
         name: `Device ${nextIndex}`,
         status: "Disconnected",
-        connection,
+        connection: "RS-485",
         lastSeen: "Just now",
         configured: false,
       });

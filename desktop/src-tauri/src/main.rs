@@ -3,7 +3,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod api_server;
+mod backend;
 mod logs;
 mod menu;
 mod serial;
@@ -19,7 +19,7 @@ use tauri::{
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
-use crate::api_server::spawn_api_server;
+use crate::backend::{kill_backend, spawn_backend, start_watchdog, BackendState};
 use crate::menu::{build_menu, show_main_window};
 use crate::serial::{
   close_serial_port, list_serial_ports, open_serial_port, read_serial_data, write_serial_data,
@@ -43,17 +43,22 @@ fn main() {
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
     .setup(|app| {
-      // 1) Spawn embedded Rust REST/WS backend
+      let state = BackendState::new();
+
+      // 1) Spawn backend
       let handle = app.handle().clone();
-      if let Err(e) = spawn_api_server(&handle) {
+      if let Err(e) = spawn_backend(&handle, &state) {
         let _ = handle.emit("backend:spawn_failed", format!("{e:?}"));
       }
 
-      // 2) App menu
+      // 2) Watchdog
+      start_watchdog(handle.clone(), state.clone());
+
+      // 3) App menu
       let menu = build_menu(&handle)?;
       app.set_menu(menu)?;
 
-      // 3) Tray menu + tray icon
+      // 4) Tray menu + tray icon
       let tray_menu = build_menu(&handle)?;
       let _tray = TrayIconBuilder::new()
         .menu(&tray_menu)
@@ -66,6 +71,7 @@ fn main() {
         .build(app)?;
 
       // Store state globally
+      app.manage(state);
       app.manage(SerialState {
         port: Mutex::new(None),
       });
@@ -74,6 +80,7 @@ fn main() {
     })
     .on_menu_event(|app, event| {
       let id = event.id().0.as_str();
+      let state = app.state::<BackendState>();
 
       match id {
         "menu.about" => {
@@ -93,24 +100,18 @@ fn main() {
             .show(|_| {});
         }
         "quit" => {
+          kill_backend(&state);
           app.exit(0);
         }
         _ => {}
       }
     })
-    .on_window_event(|window, event| {
+    .on_window_event(|app, event| {
       if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-        let label = window.label();
-        if label == "main" {
-          for (_, child) in window.app_handle().webview_windows() {
-            let child_label = child.label();
-            if child_label != "main" && child_label.starts_with("session-log-") {
-              let _ = child.close();
-            }
-          }
-          // Hide instead of close (enterprise UX: app stays in tray)
-          api.prevent_close();
-          let _ = window.hide();
+        // Hide instead of close (enterprise UX: app stays in tray)
+        api.prevent_close();
+        if let Some(w) = app.get_webview_window("main") {
+          let _ = w.hide();
         }
       }
     })

@@ -3,30 +3,16 @@ import type { ConnState } from "../../shared/types/common";
 
 type RuntimeState = {
   connState: ConnState;
-  connectedDeviceId: string | null;
   ready: boolean;
   rawData: string;
   parsedData: string;
   errors: string;
   command: string;
   logByDevice: Record<string, string>;
-  telemetryStats: {
-    ch1Tx: number;
-    ch1Rx: number;
-    ch2Tx: number;
-    ch2Rx: number;
-    totalTx: number;
-    totalRx: number;
-    ok: number;
-    err: number;
-    txFps: number;
-    rxFps: number;
-  };
 };
 
 const initialState: RuntimeState = {
-  connState: "Disconnected",
-  connectedDeviceId: null,
+  connState: "Connected",
   ready: true,
   rawData: "3A 30 31 20 52 45 41 44 0D 0A\n7E 45 4E 51 3A 30 31 0D 0A\n7E 44 41 54 41 3A 31 32 33 2E 34 0D 0A",
   parsedData:
@@ -34,18 +20,6 @@ const initialState: RuntimeState = {
   errors: "Framing error (last 5 min: 2)",
   command: "READ 01",
   logByDevice: {},
-  telemetryStats: {
-    ch1Tx: 0,
-    ch1Rx: 0,
-    ch2Tx: 0,
-    ch2Rx: 0,
-    totalTx: 0,
-    totalRx: 0,
-    ok: 0,
-    err: 0,
-    txFps: 0,
-    rxFps: 0,
-  },
 };
 
 const runtimeSlice = createSlice({
@@ -54,19 +28,10 @@ const runtimeSlice = createSlice({
   reducers: {
     setConnState(state, action: PayloadAction<ConnState>) {
       state.connState = action.payload;
-      if (action.payload === "Disconnected") {
-        state.connectedDeviceId = null;
-      }
     },
-    setConnectedDeviceId(state, action: PayloadAction<string | null>) {
-      state.connectedDeviceId = action.payload;
-      state.connState = action.payload ? "Connected" : "Disconnected";
-    },
-    setTelemetryStats(
-      state,
-      action: PayloadAction<Partial<RuntimeState["telemetryStats"]>>
-    ) {
-      state.telemetryStats = { ...state.telemetryStats, ...action.payload };
+    toggleConnState(state) {
+      state.connState =
+        state.connState === "Connected" ? "Disconnected" : "Connected";
     },
     setReady(state, action: PayloadAction<boolean>) {
       state.ready = action.payload;
@@ -98,8 +63,7 @@ const runtimeSlice = createSlice({
 
 export const {
   setConnState,
-  setConnectedDeviceId,
-  setTelemetryStats,
+  toggleConnState,
   setReady,
   setRawData,
   setParsedData,
