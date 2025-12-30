@@ -26,6 +26,10 @@ jobs:
             -v "${GITHUB_WORKSPACE}:/repo" \
             -w /repo liudonghua123/tauri-build bash -lc '
               set -euo pipefail
+              if ! command -v cargo >/dev/null 2>&1; then
+                curl https://sh.rustup.rs -sSf | sh -s -- -y
+              fi
+              . "$HOME/.cargo/env"
               cd /repo/frontend
               npm ci
               npm run build
