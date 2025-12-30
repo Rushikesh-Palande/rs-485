@@ -42,7 +42,10 @@ jobs:
               npm run build
               cd /repo/desktop
               npm ci
-              npm run build
+              TAURI_CONFIG=src-tauri/tauri.pi.conf.json \
+                TAURI_BUNDLE_TARGETS=deb,rpm \
+                TAURI_BUNDLE=deb,rpm \
+                npm run build
             '
 
       - name: Upload artifacts
