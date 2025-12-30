@@ -109,6 +109,32 @@ sudo pacman -S --needed \
 
 ---
 
+## 1.2.1) Session log save location + permissions
+
+The Session Log window saves to fixed paths:
+
+- Linux: `/home/pi/logs/rs485.log`
+- Windows: `C:\Logs\rs485.log`
+
+If you see `Save failed: Permission denied (os error 13)`, create the folder and grant the desktop app user write access.
+
+Linux example:
+
+```bash
+sudo mkdir -p /home/pi/logs
+sudo chown -R $USER:$USER /home/pi/logs
+```
+
+Windows example (run in an elevated PowerShell):
+
+```powershell
+mkdir C:\Logs
+```
+
+Ensure the user running the desktop app has write permissions to `C:\Logs`.
+
+---
+
 ## 1.3) Raspberry Pi 4 (Debian 12, aarch64)
 
 Recommended (most reliable):
