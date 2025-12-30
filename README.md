@@ -203,6 +203,26 @@ npm run build -- --target aarch64-unknown-linux-gnu
 
 ---
 
+## 1.5) GitHub Actions: Pi (Debian 12 aarch64) desktop build
+
+There is a GitHub Actions workflow that builds the Tauri desktop app for Debian 12 arm64
+using QEMU inside a container.
+
+Notes:
+- The workflow is in `.github/workflows/pi-tauri-build.yml`.
+- It runs on PRs and pushes to `main`.
+- The container runs on arm64; build time is longer than native.
+
+If you see `libudev` build errors (`libudev.pc` not found), ensure the workflow sets:
+
+```
+PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/lib/pkgconfig
+```
+
+This is required so `pkg-config` can locate `libudev` on Debian 12 arm64.
+
+---
+
 ## 2) Quick start (Backend)
 
 ```bash
