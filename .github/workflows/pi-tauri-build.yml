@@ -34,13 +34,18 @@ jobs:
               curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
               apt-get install -y nodejs
               curl https://sh.rustup.rs -sSf | sh -s -- -y
-              . "$HOME/.cargo/env"
+              if [ -f /usr/local/cargo/env ]; then
+                . /usr/local/cargo/env
+              elif [ -f "$HOME/.cargo/env" ]; then
+                . "$HOME/.cargo/env"
+              fi
+              export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/lib/pkgconfig
               cd /repo/frontend
               npm ci
               npm run build
               cd /repo/desktop
               npm ci
-              npm run build
+              TAURI_BUNDLE=deb,rpm npm run build
             '
 
       - name: Upload artifacts
