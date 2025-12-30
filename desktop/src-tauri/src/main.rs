@@ -22,8 +22,8 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use crate::api_server::spawn_api_server;
 use crate::menu::{build_menu, show_main_window};
 use crate::serial::{
-  close_serial_port, list_serial_ports, open_serial_port, read_serial_data, write_serial_data,
-  SerialState,
+  close_serial_port, get_serial_status, list_serial_ports, open_serial_port, read_serial_data,
+  write_serial_data, SerialState,
 };
 use crate::system::system_info_string;
 use crate::logs::save_session_log;
@@ -36,6 +36,7 @@ fn main() {
       close_serial_port,
       write_serial_data,
       read_serial_data,
+      get_serial_status,
       save_session_log
     ])
     .plugin(tauri_plugin_shell::init())

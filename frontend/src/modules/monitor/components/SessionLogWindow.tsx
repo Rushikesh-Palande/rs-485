@@ -2,6 +2,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PrimaryButton } from "../../../shared/components/PrimaryButton";
 
+function ensureTrailingNewline(value: string): string {
+  if (!value) return value;
+  return value.endsWith("\n") ? value : `${value}\n`;
+}
+
 export function SessionLogWindow() {
   const [params] = useSearchParams();
   const deviceId = params.get("deviceId") ?? "unassigned";
@@ -11,7 +16,7 @@ export function SessionLogWindow() {
 
   useEffect(() => {
     try {
-      setLogText(localStorage.getItem(storageKey) ?? "");
+      setLogText(ensureTrailingNewline(localStorage.getItem(storageKey) ?? ""));
     } catch {
       setLogText("");
     }
@@ -62,10 +67,22 @@ export function SessionLogWindow() {
   useEffect(() => {
     const handler = (event: StorageEvent) => {
       if (event.key !== storageKey) return;
-      setLogText(event.newValue ?? "");
+      setLogText(ensureTrailingNewline(event.newValue ?? ""));
     };
     window.addEventListener("storage", handler);
     return () => window.removeEventListener("storage", handler);
+  }, [storageKey]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      try {
+        const next = ensureTrailingNewline(localStorage.getItem(storageKey) ?? "");
+        setLogText((current) => (current === next ? current : next));
+      } catch {
+        // Ignore storage errors.
+      }
+    }, 500);
+    return () => window.clearInterval(intervalId);
   }, [storageKey]);
 
   return (
@@ -104,7 +121,9 @@ export function SessionLogWindow() {
                   setStatus("Save requires the desktop app.");
                   return;
                 }
-                const path = await invoke<string>("save_session_log", { contents: logText });
+                const path = await invoke<string>("save_session_log", {
+                  contents: ensureTrailingNewline(logText),
+                });
                 setStatus(`Saved to ${path}`);
               } catch (error) {
                 setStatus(`Save failed: ${String(error)}`);

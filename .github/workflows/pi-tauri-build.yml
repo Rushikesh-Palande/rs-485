@@ -1,0 +1,57 @@
+name: Pi Desktop Build (Debian 12 aarch64)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  desktop_pi:
+    name: Tauri desktop build (Debian 12 arm64 in container)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build in Debian 12 arm64 container
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v "${GITHUB_WORKSPACE}:/repo" \
+            -w /repo debian:12 bash -lc '
+              set -euo pipefail
+              apt-get update
+              apt-get install -y curl ca-certificates build-essential pkg-config \
+                libudev-dev \
+                libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+                librsvg2-dev libssl-dev
+              curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+              apt-get install -y nodejs
+              curl https://sh.rustup.rs -sSf | sh -s -- -y
+              if [ -f /usr/local/cargo/env ]; then
+                . /usr/local/cargo/env
+              elif [ -f "$HOME/.cargo/env" ]; then
+                . "$HOME/.cargo/env"
+              fi
+              export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/lib/pkgconfig
+              cd /repo/frontend
+              npm ci
+              npm run build
+              cd /repo/desktop
+              npm ci
+              TAURI_BUNDLE=deb,rpm npm run build
+            '
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rs485-desktop-tauri-debian12-arm64
+          path: |
+            desktop/src-tauri/target/release/rs485_command_center*
+            desktop/src-tauri/target/release/bundle/**

@@ -80,6 +80,32 @@ fn parse_data_bits(data_bits: u8) -> Result<serialport::DataBits, String> {
   }
 }
 
+fn format_parity(parity: serialport::Parity) -> String {
+  match parity {
+    serialport::Parity::None => "None",
+    serialport::Parity::Even => "Even",
+    serialport::Parity::Odd => "Odd",
+  }
+  .to_string()
+}
+
+fn format_stop_bits(stop_bits: serialport::StopBits) -> String {
+  match stop_bits {
+    serialport::StopBits::One => "1",
+    serialport::StopBits::Two => "2",
+  }
+  .to_string()
+}
+
+fn format_data_bits(data_bits: serialport::DataBits) -> u8 {
+  match data_bits {
+    serialport::DataBits::Five => 5,
+    serialport::DataBits::Six => 6,
+    serialport::DataBits::Seven => 7,
+    serialport::DataBits::Eight => 8,
+  }
+}
+
 fn hex_to_bytes(input: &str) -> Result<Vec<u8>, String> {
   let filtered: String = input.chars().filter(|c| !c.is_whitespace()).collect();
   if filtered.len() % 2 != 0 {
@@ -102,6 +128,26 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
     .map(|b| format!("{:02X}", b))
     .collect::<Vec<_>>()
     .join(" ")
+}
+
+fn decimal_to_bytes(input: &str) -> Result<Vec<u8>, String> {
+  let mut out = Vec::new();
+  for chunk in input.split(|c: char| !c.is_ascii_digit()) {
+    if chunk.is_empty() {
+      continue;
+    }
+    let value: u16 = chunk
+      .parse()
+      .map_err(|_| format!("Invalid decimal byte: {chunk}"))?;
+    if value > 255 {
+      return Err(format!("Decimal byte out of range: {value}"));
+    }
+    out.push(value as u8);
+  }
+  if out.is_empty() {
+    return Err("Decimal input must contain at least one byte".to_string());
+  }
+  Ok(out)
 }
 
 #[tauri::command]
@@ -245,6 +291,8 @@ pub fn write_serial_data(
   let port = guard.as_mut().ok_or_else(|| "Serial port not open".to_string())?;
   let bytes = match format.as_deref() {
     Some("hex") => hex_to_bytes(&data)?,
+    Some("decimal") => decimal_to_bytes(&data)?,
+    Some("modbus") => hex_to_bytes(&data)?,
     _ => data.into_bytes(),
   };
 
@@ -274,4 +322,31 @@ pub fn read_serial_data(
   let hex = bytes_to_hex(&buf);
   eprintln!("[serial] read ok bytes={}", n);
   Ok(SerialRead { len: n, text, hex })
+}
+
+#[tauri::command]
+pub fn get_serial_status(state: State<SerialState>) -> Result<Option<SerialStatus>, String> {
+  let guard = state.port.lock().map_err(|_| "Serial port mutex poisoned".to_string())?;
+  let port = match guard.as_ref() {
+    Some(port) => port,
+    None => return Ok(None),
+  };
+
+  let port_name = port.name().unwrap_or_else(|| "unknown".to_string());
+  let baud = port.baud_rate().map_err(|err| err.to_string())?;
+  let parity = format_parity(port.parity().map_err(|err| err.to_string())?);
+  let stop_bits = format_stop_bits(port.stop_bits().map_err(|err| err.to_string())?);
+  let data_bits = format_data_bits(port.data_bits().map_err(|err| err.to_string())?);
+  let timeout = port.timeout();
+
+  Ok(Some(SerialStatus {
+    port: port_name,
+    baud,
+    parity,
+    stop_bits,
+    data_bits,
+    timeout_ms: timeout.as_millis() as u64,
+    fd: None,
+    handle: None,
+  }))
 }

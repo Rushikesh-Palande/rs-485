@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Maximize2 } from "lucide-react";
+import { ArrowLeft, Maximize2, Pause, Play } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "../../../app/hooks";
 import { addEvent } from "../../events/eventsSlice";
 import { buildEvent } from "../../events/utils";
@@ -32,6 +32,16 @@ type TelemetryStats = {
 };
 
 type SerialPayload = { len: number; text: string; hex: string };
+type SerialStatus = {
+  port: string;
+  baud: number;
+  parity: string;
+  stopBits: string;
+  dataBits: number;
+  timeoutMs: number;
+  fd?: number | null;
+  handle?: number | null;
+};
 
 const TELEMETRY_PREFIX = "@TLM";
 
@@ -138,6 +148,9 @@ function parseModbusTelemetry(bytes: number[]): Partial<TelemetryStats> | null {
 
 function parseTelemetry(frameFormat: string, payload: SerialPayload): Partial<TelemetryStats> | null {
   if (!payload.len) return null;
+  if (payload.text.includes(TELEMETRY_PREFIX)) {
+    return parseAsciiTelemetry(payload.text);
+  }
   if (frameFormat === "Modbus RTU") {
     return parseModbusTelemetry(parseHexBytes(payload.hex));
   }
@@ -146,10 +159,25 @@ function parseTelemetry(frameFormat: string, payload: SerialPayload): Partial<Te
     return parseAsciiTelemetry(ascii);
   }
   if (frameFormat === "Decimal") {
-    const ascii = bytesToAscii(parseDecimalBytes(payload.text));
+    const ascii = bytesToAscii(parseHexBytes(payload.hex));
     return parseAsciiTelemetry(ascii);
   }
   return parseAsciiTelemetry(payload.text);
+}
+
+function formatPayloadLine(frameFormat: string, payload: SerialPayload): string {
+  if (frameFormat === "Hex") return payload.hex;
+  if (frameFormat === "Modbus RTU") return payload.hex;
+  if (frameFormat === "Decimal") {
+    const bytes = parseHexBytes(payload.hex);
+    return bytes.map((value) => String(value)).join(" ");
+  }
+  return payload.text;
+}
+
+function ensureTrailingNewline(value: string): string {
+  if (!value) return value;
+  return value.endsWith("\n") ? value : `${value}\n`;
 }
 
 function normalizeStats(
@@ -186,6 +214,7 @@ export function DeviceMonitor() {
   const pollRef = useRef(false);
   const statsRef = useRef(telemetryStats);
   const [showLogWindow, setShowLogWindow] = useState(false);
+  const [autoReadEnabled, setAutoReadEnabled] = useState(false);
 
   const toggleConnection = async () => {
     const { isTauri, invoke } = await import("@tauri-apps/api/core");
@@ -309,9 +338,50 @@ export function DeviceMonitor() {
     }
 
     try {
+      let status: SerialStatus | null = null;
+      try {
+        status = await invoke<SerialStatus | null>("get_serial_status");
+      } catch (error) {
+        dispatch(
+          appendLog({
+            deviceId: logDeviceId,
+            entry: `[Warn] Status unavailable: ${String(error)}`,
+          })
+        );
+      }
+      if (status) {
+        if (status.port !== port) {
+          dispatch(
+            appendLog({
+              deviceId: logDeviceId,
+              entry: `[Warn] Port mismatch: UI=${port} open=${status.port}`,
+            })
+          );
+        }
+        dispatch(
+          appendLog({
+            deviceId: logDeviceId,
+            entry: `[Serial] port=${status.port} fd=${status.fd ?? "n/a"} handle=${status.handle ?? "n/a"}`,
+          })
+        );
+      }
+      dispatch(
+        appendLog({
+          deviceId: logDeviceId,
+          entry: `[Serial] format=${frameFormat}`,
+        })
+      );
+      const sendFormat =
+        frameFormat === "Hex"
+          ? "hex"
+          : frameFormat === "Decimal"
+          ? "decimal"
+          : frameFormat === "Modbus RTU"
+          ? "modbus"
+          : "text";
       const written = await invoke<number>("write_serial_data", {
         data: command.trim(),
-        format: frameFormat === "Hex" ? "hex" : "text",
+        format: sendFormat,
       });
       dispatch(appendLog({ deviceId: logDeviceId, entry: `[Send OK] ${written} bytes` }));
       dispatch(
@@ -410,6 +480,39 @@ export function DeviceMonitor() {
     }
 
     try {
+      let status: SerialStatus | null = null;
+      try {
+        status = await invoke<SerialStatus | null>("get_serial_status");
+      } catch (error) {
+        dispatch(
+          appendLog({
+            deviceId: logDeviceId,
+            entry: `[Warn] Status unavailable: ${String(error)}`,
+          })
+        );
+      }
+      if (status) {
+        if (status.port !== port) {
+          dispatch(
+            appendLog({
+              deviceId: logDeviceId,
+              entry: `[Warn] Port mismatch: UI=${port} open=${status.port}`,
+            })
+          );
+        }
+        dispatch(
+          appendLog({
+            deviceId: logDeviceId,
+            entry: `[Serial] port=${status.port} fd=${status.fd ?? "n/a"} handle=${status.handle ?? "n/a"}`,
+          })
+        );
+      }
+      dispatch(
+        appendLog({
+          deviceId: logDeviceId,
+          entry: `[Serial] format=${frameFormat}`,
+        })
+      );
       const payload = await invoke<{ len: number; text: string; hex: string }>("read_serial_data", {
         maxBytes: 1024,
       });
@@ -428,7 +531,7 @@ export function DeviceMonitor() {
         );
         return;
       }
-      const line = frameFormat === "Hex" ? payload.hex : payload.text;
+      const line = formatPayloadLine(frameFormat, payload);
       const parsed = parseTelemetry(frameFormat, payload);
       if (parsed) {
         dispatch(setTelemetryStats(normalizeStats(telemetryStats, parsed)));
@@ -471,7 +574,7 @@ export function DeviceMonitor() {
   useEffect(() => {
     if (!logDeviceId) return;
     try {
-      localStorage.setItem(`session-log:${logDeviceId}`, logText);
+      localStorage.setItem(`session-log:${logDeviceId}`, ensureTrailingNewline(logText));
     } catch {
       // Ignore storage errors (private mode, quota, etc.).
     }
@@ -498,7 +601,7 @@ export function DeviceMonitor() {
   }, [logDeviceId]);
 
   useEffect(() => {
-    if (!isConnected || !deviceConfigured) {
+    if (!isConnected || !deviceConfigured || !autoReadEnabled) {
       return undefined;
     }
     let cancelled = false;
@@ -516,6 +619,9 @@ export function DeviceMonitor() {
         if (parsed) {
           dispatch(setTelemetryStats(normalizeStats(statsRef.current, parsed)));
         }
+        const line = formatPayloadLine(frameFormat, payload);
+        dispatch(appendLog({ deviceId: logDeviceId, entry: `[Auto Read OK] ${payload.len} bytes` }));
+        dispatch(appendLog({ deviceId: logDeviceId, entry: `[Auto Read] (${frameFormat}) ${line}` }));
       } catch {
         // Ignore background read failures to avoid spamming UI.
       } finally {
@@ -527,7 +633,7 @@ export function DeviceMonitor() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [dispatch, deviceConfigured, frameFormat, isConnected]);
+  }, [autoReadEnabled, dispatch, deviceConfigured, frameFormat, isConnected, logDeviceId]);
 
   useEffect(() => {
     return () => {
@@ -655,7 +761,7 @@ export function DeviceMonitor() {
                     Command Entry
                   </div>
                   <div className="mt-1 text-xs text-slate-400">
-                    Send immediate commands or read the current buffer.
+                    Send immediate commands or toggle continuous reads.
                   </div>
                 </div>
               </div>
@@ -669,8 +775,23 @@ export function DeviceMonitor() {
                 />
                 <div className="flex flex-wrap items-center gap-2">
                   <PrimaryButton onClick={() => void sendSerialCommand()}>Send</PrimaryButton>
-                  <PrimaryButton variant="soft" onClick={() => void readSerialData()}>
-                    Read
+                  <PrimaryButton
+                    variant="soft"
+                    icon={autoReadEnabled ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                    onClick={() =>
+                      setAutoReadEnabled((prev) => {
+                        const next = !prev;
+                        dispatch(
+                          appendLog({
+                            deviceId: logDeviceId,
+                            entry: `[Auto Read] ${next ? "Started" : "Paused"}`,
+                          })
+                        );
+                        return next;
+                      })
+                    }
+                  >
+                    {autoReadEnabled ? "Pause Read" : "Play Read"}
                   </PrimaryButton>
                 </div>
               </div>
