@@ -109,6 +109,32 @@ sudo pacman -S --needed \
 
 ---
 
+## 1.2.1) Session log save location + permissions
+
+The Session Log window saves to fixed paths:
+
+- Linux: `/home/pi/logs/rs485.log`
+- Windows: `C:\Logs\rs485.log`
+
+If you see `Save failed: Permission denied (os error 13)`, create the folder and grant the desktop app user write access.
+
+Linux example:
+
+```bash
+sudo mkdir -p /home/pi/logs
+sudo chown -R $USER:$USER /home/pi/logs
+```
+
+Windows example (run in an elevated PowerShell):
+
+```powershell
+mkdir C:\Logs
+```
+
+Ensure the user running the desktop app has write permissions to `C:\Logs`.
+
+---
+
 ## 1.3) Raspberry Pi 4 (Debian 12, aarch64)
 
 Recommended (most reliable):
@@ -174,6 +200,26 @@ PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/lib/pkgconfig \
 CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
 npm run build -- --target aarch64-unknown-linux-gnu
 ```
+
+---
+
+## 1.5) GitHub Actions: Pi (Debian 12 aarch64) desktop build
+
+There is a GitHub Actions workflow that builds the Tauri desktop app for Debian 12 arm64
+using QEMU inside a container.
+
+Notes:
+- The workflow is in `.github/workflows/pi-tauri-build.yml`.
+- It runs on PRs and pushes to `main`.
+- The container runs on arm64; build time is longer than native.
+
+If you see `libudev` build errors (`libudev.pc` not found), ensure the workflow sets:
+
+```
+PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/lib/pkgconfig
+```
+
+This is required so `pkg-config` can locate `libudev` on Debian 12 arm64.
 
 ---
 
